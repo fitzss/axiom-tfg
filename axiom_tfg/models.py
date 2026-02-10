@@ -61,6 +61,18 @@ class AllowedAdjustments(BaseModel):
     can_split_payload: bool = False
 
 
+class KeepoutZone(BaseModel):
+    """Axis-aligned bounding box defining a forbidden volume."""
+    id: str
+    min_xyz: list[float] = Field(min_length=3, max_length=3)
+    max_xyz: list[float] = Field(min_length=3, max_length=3)
+
+
+class EnvironmentSpec(BaseModel):
+    keepout_zones: list[KeepoutZone] = Field(default_factory=list)
+    safety_buffer: float = Field(default=0.02, ge=0)
+
+
 class MetaSpec(BaseModel):
     template: str
 
@@ -74,6 +86,9 @@ class TaskSpec(BaseModel):
     constructor: ConstructorSpec
     allowed_adjustments: AllowedAdjustments = Field(
         default_factory=AllowedAdjustments,
+    )
+    environment: EnvironmentSpec = Field(
+        default_factory=EnvironmentSpec,
     )
 
 

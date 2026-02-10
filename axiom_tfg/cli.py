@@ -27,6 +27,7 @@ _DEMO_YAMLS = [
     "pick_place_can.yaml",
     "pick_place_cant_reach.yaml",
     "pick_place_cant_payload.yaml",
+    "pick_place_cant_keepout.yaml",
 ]
 
 

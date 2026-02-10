@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>axiom-tfg</title>
+  <style>
+    :root { --bg: #0f1117; --card: #1a1d27; --border: #2a2d37; --text: #e0e0e0; --muted: #888; --green: #22c55e; --red: #ef4444; --blue: #3b82f6; --yellow: #eab308; --purple: #a855f7; --orange: #f97316; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace; background: var(--bg); color: var(--text); line-height: 1.6; }
+    .container { max-width: 960px; margin: 0 auto; padding: 2rem 1rem; }
+    h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
+    .subtitle { color: var(--muted); font-size: 0.85rem; margin-bottom: 2rem; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; margin-bottom: 1.5rem; }
+    label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    textarea { width: 100%; min-height: 220px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 0.75rem; font-family: inherit; font-size: 0.85rem; resize: vertical; }
+    textarea:focus { outline: none; border-color: var(--blue); }
+    input[type="text"], input[type="number"] { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 0.45rem 0.6rem; font-family: inherit; font-size: 0.8rem; }
+    input:focus { outline: none; border-color: var(--blue); }
+    select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 0.45rem 0.6rem; font-family: inherit; font-size: 0.8rem; }
+    select:focus { outline: none; border-color: var(--blue); }
+    button { background: var(--blue); color: #fff; border: none; border-radius: 4px; padding: 0.5rem 1.2rem; font-family: inherit; font-size: 0.8rem; cursor: pointer; margin-top: 0.5rem; }
+    button:hover { opacity: 0.9; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-ai { background: var(--purple); }
+    .btn-green { background: var(--green); color: #000; font-weight: bold; }
+    .btn-orange { background: var(--orange); color: #000; }
+    .btn-sm { padding: 0.3rem 0.7rem; font-size: 0.75rem; margin-top: 0; }
+    .btn-red { background: var(--red); }
+    .result { margin-top: 1rem; padding: 1rem; border-radius: 4px; display: none; }
+    .result.show { display: block; }
+    .result.can { background: #0a2612; border: 1px solid var(--green); }
+    .result.cant { background: #2a0a0a; border: 1px solid var(--red); }
+    .result.err { background: #2a1a0a; border: 1px solid var(--yellow); }
+    .verdict { font-size: 1.1rem; font-weight: bold; }
+    .verdict.can { color: var(--green); }
+    .verdict.cant { color: var(--red); }
+    .detail { color: var(--muted); font-size: 0.8rem; margin-top: 0.4rem; }
+    .detail a { color: var(--blue); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    th { text-align: left; color: var(--muted); font-weight: normal; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); }
+    td { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); }
+    tr:hover { background: rgba(255,255,255,0.02); }
+    .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 0.75rem; font-weight: bold; }
+    .badge.can { background: #0a2612; color: var(--green); }
+    .badge.cant { background: #2a0a0a; color: var(--red); }
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .empty { color: var(--muted); text-align: center; padding: 2rem; }
+    .pre-wrap { white-space: pre-wrap; font-size: 0.8rem; margin-top: 0.75rem; max-height: 300px; overflow: auto; background: var(--bg); padding: 0.75rem; border-radius: 4px; }
+    .ai-box { margin-top: 0.75rem; padding: 0.75rem; border-radius: 4px; background: #1a1030; border: 1px solid var(--purple); font-size: 0.85rem; display: none; }
+    .ai-box.show { display: block; }
+    .ai-box .ai-label { font-size: 0.7rem; color: var(--purple); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.3rem; }
+    .ai-disabled { color: var(--muted); font-size: 0.75rem; padding: 0.5rem 0.75rem; background: rgba(168,85,247,0.08); border: 1px solid var(--border); border-radius: 4px; margin-bottom: 1.5rem; }
+
+    /* ── Task Builder ── */
+    .builder-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem 1.25rem; margin-bottom: 0.75rem; }
+    .builder-grid .full { grid-column: 1 / -1; }
+    .field { display: flex; flex-direction: column; gap: 0.2rem; }
+    .field label { margin-bottom: 0; font-size: 0.7rem; }
+    .field input, .field select { width: 100%; }
+    .xyz-row { display: flex; gap: 0.4rem; }
+    .xyz-row input { flex: 1; min-width: 0; }
+    .section-title { font-size: 0.75rem; color: var(--blue); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.5rem; margin-bottom: 0.25rem; border-bottom: 1px solid var(--border); padding-bottom: 0.2rem; }
+    .section-title:first-child { margin-top: 0; }
+    .checkbox-row { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; margin-top: 0.25rem; }
+    .checkbox-row label { display: inline-flex; align-items: center; gap: 0.3rem; text-transform: none; font-size: 0.8rem; color: var(--text); }
+    .zone-row { display: flex; gap: 0.4rem; align-items: end; flex-wrap: wrap; margin-bottom: 0.4rem; }
+    .zone-row input { width: 60px; }
+    .zone-row .zone-id-input { width: 100px; }
+
+    /* ── Diff viewer ── */
+    .diff-panel { margin-top: 0.75rem; display: none; }
+    .diff-panel.show { display: block; }
+    .diff-toggle { color: var(--blue); cursor: pointer; font-size: 0.8rem; text-decoration: underline; margin-top: 0.5rem; display: inline-block; }
+    .diff-content { white-space: pre-wrap; font-size: 0.78rem; background: var(--bg); padding: 0.75rem; border-radius: 4px; margin-top: 0.4rem; max-height: 300px; overflow: auto; }
+    .diff-content .diff-del { color: var(--red); }
+    .diff-content .diff-add { color: var(--green); }
+
+    /* ── Fix bar ── */
+    .fix-bar { margin-top: 0.75rem; padding: 0.75rem; border-radius: 4px; background: #1a1500; border: 1px solid var(--orange); display: none; }
+    .fix-bar.show { display: block; }
+    .fix-bar .fix-label { font-size: 0.7rem; color: var(--orange); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.3rem; }
+    .fix-bar .fix-desc { font-size: 0.8rem; margin-bottom: 0.5rem; }
+    .fix-advisory { color: var(--muted); font-size: 0.8rem; font-style: italic; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>axiom-tfg</h1>
+  <p class="subtitle">Deterministic physical-task feasibility gate linter</p>
+
+  <!-- ── AI Assistant ── -->
+  {% if ai_enabled %}
+  <div class="card">
+    <label for="ai-prompt">AI Assistant (Gemini)</label>
+    <div style="color: var(--muted); font-size: 0.75rem; margin-bottom: 0.5rem;">Generate YAML from English, then click Run gates.</div>
+    <input type="text" id="ai-prompt" style="width:100%;" placeholder="e.g. 'Pick a 2kg box from shelf at [1,0,1] and place it at [2,1,0.5] with a UR5e robot'">
+    <button class="btn-ai" id="ai-gen-btn" onclick="generateSpec()">Generate TaskSpec</button>
+    <div id="ai-gen-status" style="color: var(--muted); font-size: 0.8rem; margin-top: 0.4rem;"></div>
+  </div>
+  {% else %}
+  <div class="ai-disabled">AI disabled: set <code>GOOGLE_API_KEY</code> to enable English &rarr; YAML generation.</div>
+  {% endif %}
+
+  <!-- ── Load Demo ── -->
+  <div class="card">
+    <label for="demo-select">Load Demo</label>
+    <div style="display:flex; gap:0.5rem; align-items:end;">
+      <select id="demo-select" style="flex:1;"><option value="">-- select an example --</option></select>
+      <button class="btn-sm" onclick="loadDemo()">Load</button>
+    </div>
+  </div>
+
+  <!-- ── Task Builder ── -->
+  <div class="card">
+    <label>Task Builder</label>
+    <div class="section-title" style="margin-top:0;">Substrate</div>
+    <div class="builder-grid">
+      <div class="field"><label>task_id</label><input type="text" id="b-task-id" value="my-task-001"></div>
+      <div class="field"><label>substrate.id</label><input type="text" id="b-sub-id" value="soda_can"></div>
+      <div class="field"><label>substrate.mass_kg</label><input type="number" id="b-sub-mass" value="0.35" step="0.01" min="0.001"></div>
+      <div class="field"><label>substrate.initial_pose.xyz</label><div class="xyz-row"><input type="number" id="b-sub-x" value="1.0" step="0.1"><input type="number" id="b-sub-y" value="0.0" step="0.1"><input type="number" id="b-sub-z" value="0.8" step="0.1"></div></div>
+    </div>
+
+    <div class="section-title">Constructor</div>
+    <div class="builder-grid">
+      <div class="field"><label>constructor.id</label><input type="text" id="b-con-id" value="ur5e"></div>
+      <div class="field"><label>constructor.base_pose.xyz</label><div class="xyz-row"><input type="number" id="b-con-x" value="0.0" step="0.1"><input type="number" id="b-con-y" value="0.0" step="0.1"><input type="number" id="b-con-z" value="0.0" step="0.1"></div></div>
+      <div class="field"><label>max_reach_m</label><input type="number" id="b-con-reach" value="1.85" step="0.01" min="0.001"></div>
+      <div class="field"><label>max_payload_kg</label><input type="number" id="b-con-payload" value="5.0" step="0.1" min="0.001"></div>
+    </div>
+
+    <div class="section-title">Transformation</div>
+    <div class="builder-grid">
+      <div class="field"><label>target_pose.xyz</label><div class="xyz-row"><input type="number" id="b-tgt-x" value="1.2" step="0.1"><input type="number" id="b-tgt-y" value="0.3" step="0.1"><input type="number" id="b-tgt-z" value="0.8" step="0.1"></div></div>
+      <div class="field"><label>tolerance_m</label><input type="number" id="b-tgt-tol" value="0.01" step="0.001" min="0.001"></div>
+    </div>
+
+    <div class="section-title">Environment</div>
+    <div class="builder-grid">
+      <div class="field"><label>safety_buffer</label><input type="number" id="b-env-buffer" value="0.02" step="0.01" min="0"></div>
+      <div class="field full">
+        <label>Keepout zones</label>
+        <div id="zone-list"></div>
+        <button class="btn-sm" onclick="addZone()">+ Add zone</button>
+      </div>
+    </div>
+
+    <div class="section-title">Allowed adjustments</div>
+    <div class="checkbox-row">
+      <label><input type="checkbox" id="b-adj-target" checked> can_move_target</label>
+      <label><input type="checkbox" id="b-adj-base"> can_move_base</label>
+      <label><input type="checkbox" id="b-adj-constructor"> can_change_constructor</label>
+      <label><input type="checkbox" id="b-adj-split"> can_split_payload</label>
+    </div>
+
+    <button class="btn-green" onclick="buildYaml()" style="margin-top:0.75rem;">Generate YAML</button>
+  </div>
+
+  <!-- ── YAML Editor + Run ── -->
+  <div class="card">
+    <label for="yaml-input">TaskSpec YAML (source of truth)</label>
+    <textarea id="yaml-input" spellcheck="false" placeholder="Paste your TaskSpec YAML here...">task_id: my-task-001
+meta:
+  template: pick_and_place
+
+substrate:
+  id: soda_can
+  mass_kg: 0.35
+  initial_pose:
+    xyz: [1.0, 0.0, 0.8]
+
+transformation:
+  target_pose:
+    xyz: [1.2, 0.3, 0.8]
+  tolerance_m: 0.01
+
+constructor:
+  id: ur5e
+  base_pose:
+    xyz: [0.0, 0.0, 0.0]
+  max_reach_m: 1.85
+  max_payload_kg: 5.0
+
+allowed_adjustments:
+  can_move_target: true
+  can_move_base: false
+  can_change_constructor: true
+  can_split_payload: false</textarea>
+    <button id="run-btn" onclick="submitRun()">Run gates</button>
+
+    <div id="result" class="result">
+      <div id="result-verdict" class="verdict"></div>
+      <div id="result-detail" class="detail"></div>
+
+      <!-- Fix bar -->
+      <div id="fix-bar" class="fix-bar">
+        <div class="fix-label">Counterfactual Fix</div>
+        <div id="fix-desc" class="fix-desc"></div>
+        <button id="fix-apply-btn" class="btn-orange btn-sm" onclick="applyFix()" style="display:none;">Apply fix to YAML</button>
+        <span id="fix-advisory" class="fix-advisory" style="display:none;"></span>
+        <div id="diff-panel" class="diff-panel">
+          <span class="diff-toggle" onclick="toggleDiff()">Show diff</span>
+          <div id="diff-content" class="diff-content" style="display:none;"></div>
+        </div>
+      </div>
+
+      <div id="ai-explain-box" class="ai-box">
+        <div class="ai-label">AI Explanation</div>
+        <div id="ai-explain-text"></div>
+      </div>
+      <div id="result-evidence" class="pre-wrap"></div>
+    </div>
+  </div>
+
+  <!-- ── Recent runs ── -->
+  <div class="card">
+    <label>Recent runs</label>
+    {% if runs %}
+    <table>
+      <thead>
+        <tr>
+          <th>Run ID</th>
+          <th>Task ID</th>
+          <th>Verdict</th>
+          <th>Failed gate</th>
+          <th>Top fix</th>
+          <th>Created</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in runs %}
+        <tr>
+          <td><code>{{ r.run_id }}</code></td>
+          <td>{{ r.task_id }}</td>
+          <td><span class="badge {{ 'can' if r.verdict == 'CAN' else 'cant' }}">{{ r.verdict }}</span></td>
+          <td>{{ r.failed_gate or '-' }}</td>
+          <td>{{ r.top_fix or '-' }}</td>
+          <td>{{ r.created_at[:19] }}</td>
+          <td><a href="/runs/{{ r.run_id }}/evidence" target="_blank">evidence</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">No runs yet. Paste a TaskSpec above and click Run.</div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+const AI_ENABLED = {{ 'true' if ai_enabled else 'false' }};
+
+// ── state for fix-apply ──
+let _lastYamlBeforeRun = '';
+let _pendingFixPatch = null;
+let _fixedYaml = '';
+
+// ── Demo loader ──
+async function loadDemoList() {
+  try {
+    const resp = await fetch('/examples');
+    const names = await resp.json();
+    const sel = document.getElementById('demo-select');
+    names.forEach(n => {
+      const opt = document.createElement('option');
+      opt.value = n; opt.textContent = n;
+      sel.appendChild(opt);
+    });
+  } catch (e) { /* ignore */ }
+}
+async function loadDemo() {
+  const name = document.getElementById('demo-select').value;
+  if (!name) return;
+  try {
+    const resp = await fetch('/examples/' + encodeURIComponent(name));
+    if (resp.ok) {
+      document.getElementById('yaml-input').value = await resp.text();
+    }
+  } catch (e) { /* ignore */ }
+}
+loadDemoList();
+
+// ── Zone builder ──
+let _zoneCount = 0;
+function addZone() {
+  _zoneCount++;
+  const div = document.createElement('div');
+  div.className = 'zone-row';
+  div.id = 'zone-' + _zoneCount;
+  div.innerHTML =
+    '<input type="text" class="zone-id-input" placeholder="id" value="zone_' + _zoneCount + '">' +
+    '<span style="color:var(--muted);font-size:0.7rem;">min:</span>' +
+    '<input type="number" step="0.1" value="0" placeholder="x">' +
+    '<input type="number" step="0.1" value="0" placeholder="y">' +
+    '<input type="number" step="0.1" value="0" placeholder="z">' +
+    '<span style="color:var(--muted);font-size:0.7rem;">max:</span>' +
+    '<input type="number" step="0.1" value="1" placeholder="x">' +
+    '<input type="number" step="0.1" value="1" placeholder="y">' +
+    '<input type="number" step="0.1" value="1" placeholder="z">' +
+    '<button class="btn-sm btn-red" onclick="removeZone(' + _zoneCount + ')" style="margin-top:0;">X</button>';
+  document.getElementById('zone-list').appendChild(div);
+}
+function removeZone(id) {
+  const el = document.getElementById('zone-' + id);
+  if (el) el.remove();
+}
+function getZones() {
+  const zones = [];
+  document.querySelectorAll('#zone-list .zone-row').forEach(row => {
+    const inputs = row.querySelectorAll('input');
+    zones.push({
+      id: inputs[0].value || 'zone',
+      min_xyz: [parseFloat(inputs[1].value)||0, parseFloat(inputs[2].value)||0, parseFloat(inputs[3].value)||0],
+      max_xyz: [parseFloat(inputs[4].value)||0, parseFloat(inputs[5].value)||0, parseFloat(inputs[6].value)||0],
+    });
+  });
+  return zones;
+}
+
+// ── Build YAML from form ──
+function v(id) { return document.getElementById(id).value; }
+function n(id) { return parseFloat(document.getElementById(id).value) || 0; }
+function c(id) { return document.getElementById(id).checked; }
+
+function buildYaml() {
+  let y = '';
+  y += 'task_id: ' + v('b-task-id') + '\n';
+  y += 'meta:\n  template: pick_and_place\n\n';
+  y += 'substrate:\n';
+  y += '  id: ' + v('b-sub-id') + '\n';
+  y += '  mass_kg: ' + n('b-sub-mass') + '\n';
+  y += '  initial_pose:\n    xyz: [' + n('b-sub-x') + ', ' + n('b-sub-y') + ', ' + n('b-sub-z') + ']\n\n';
+  y += 'transformation:\n';
+  y += '  target_pose:\n    xyz: [' + n('b-tgt-x') + ', ' + n('b-tgt-y') + ', ' + n('b-tgt-z') + ']\n';
+  y += '  tolerance_m: ' + n('b-tgt-tol') + '\n\n';
+  y += 'constructor:\n';
+  y += '  id: ' + v('b-con-id') + '\n';
+  y += '  base_pose:\n    xyz: [' + n('b-con-x') + ', ' + n('b-con-y') + ', ' + n('b-con-z') + ']\n';
+  y += '  max_reach_m: ' + n('b-con-reach') + '\n';
+  y += '  max_payload_kg: ' + n('b-con-payload') + '\n';
+
+  const zones = getZones();
+  const buf = n('b-env-buffer');
+  if (zones.length > 0 || buf !== 0.02) {
+    y += '\nenvironment:\n';
+    y += '  safety_buffer: ' + buf + '\n';
+    if (zones.length > 0) {
+      y += '  keepout_zones:\n';
+      zones.forEach(z => {
+        y += '    - id: ' + z.id + '\n';
+        y += '      min_xyz: [' + z.min_xyz.join(', ') + ']\n';
+        y += '      max_xyz: [' + z.max_xyz.join(', ') + ']\n';
+      });
+    }
+  }
+
+  y += '\nallowed_adjustments:\n';
+  y += '  can_move_target: ' + c('b-adj-target') + '\n';
+  y += '  can_move_base: ' + c('b-adj-base') + '\n';
+  y += '  can_change_constructor: ' + c('b-adj-constructor') + '\n';
+  y += '  can_split_payload: ' + c('b-adj-split') + '\n';
+
+  document.getElementById('yaml-input').value = y;
+}
+
+// ── AI generate ──
+async function generateSpec() {
+  const btn = document.getElementById('ai-gen-btn');
+  const prompt = document.getElementById('ai-prompt').value.trim();
+  const status = document.getElementById('ai-gen-status');
+  if (!prompt) { status.textContent = 'Please enter a task description.'; return; }
+  btn.disabled = true; btn.textContent = 'Generating...'; status.textContent = '';
+  try {
+    const resp = await fetch('/ai/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt }) });
+    const data = await resp.json();
+    if (!resp.ok) { status.textContent = 'Error: ' + (data.detail || resp.status); return; }
+    document.getElementById('yaml-input').value = data.yaml;
+    status.textContent = 'TaskSpec generated — review and click Run gates.';
+  } catch (e) { status.textContent = 'Network error: ' + e.message; }
+  finally { btn.disabled = false; btn.textContent = 'Generate TaskSpec'; }
+}
+
+// ── AI explain ──
+async function fetchExplanation(evidence) {
+  const box = document.getElementById('ai-explain-box');
+  const text = document.getElementById('ai-explain-text');
+  box.className = 'ai-box'; text.textContent = '';
+  if (!AI_ENABLED) return;
+  box.className = 'ai-box show'; text.textContent = 'Thinking...';
+  try {
+    const resp = await fetch('/ai/explain', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ evidence }) });
+    const data = await resp.json();
+    text.textContent = resp.ok ? data.explanation : 'Could not get explanation.';
+  } catch (e) { text.textContent = 'Could not get explanation.'; }
+}
+
+// ── Apply fix helpers ──
+function applyFixToYaml(yamlText, patch) {
+  if (!patch || !patch.new_xyz) return yamlText;
+  const xyz = patch.new_xyz;
+  const xyzStr = '[' + xyz.map(v => parseFloat(v.toFixed(6))).join(', ') + ']';
+  const lines = yamlText.split('\n');
+  const result = [];
+
+  if (patch.kind === 'MOVE_TARGET') {
+    let inTarget = false;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (/^\s*target_pose:/.test(line)) { inTarget = true; result.push(line); continue; }
+      if (inTarget && /^\s*xyz:/.test(line)) {
+        const indent = line.match(/^(\s*)/)[1];
+        result.push(indent + 'xyz: ' + xyzStr);
+        inTarget = false; continue;
+      }
+      if (inTarget && !/^\s/.test(line)) inTarget = false;
+      result.push(line);
+    }
+  } else if (patch.kind === 'MOVE_BASE') {
+    let inBase = false;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (/^\s*base_pose:/.test(line)) { inBase = true; result.push(line); continue; }
+      if (inBase && /^\s*xyz:/.test(line)) {
+        const indent = line.match(/^(\s*)/)[1];
+        result.push(indent + 'xyz: ' + xyzStr);
+        inBase = false; continue;
+      }
+      if (inBase && !/^\s/.test(line)) inBase = false;
+      result.push(line);
+    }
+  } else {
+    return yamlText;
+  }
+  return result.join('\n');
+}
+
+function computeDiffHtml(before, after) {
+  const a = before.split('\n'), b = after.split('\n');
+  const maxLen = Math.max(a.length, b.length);
+  let html = '';
+  for (let i = 0; i < maxLen; i++) {
+    const la = i < a.length ? a[i] : undefined;
+    const lb = i < b.length ? b[i] : undefined;
+    if (la === lb) {
+      html += '  ' + esc(la) + '\n';
+    } else {
+      if (la !== undefined) html += '<span class="diff-del">- ' + esc(la) + '</span>\n';
+      if (lb !== undefined) html += '<span class="diff-add">+ ' + esc(lb) + '</span>\n';
+    }
+  }
+  return html;
+}
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function applyFix() {
+  if (!_fixedYaml) return;
+  document.getElementById('yaml-input').value = _fixedYaml;
+  document.getElementById('fix-apply-btn').textContent = 'Applied!';
+  document.getElementById('fix-apply-btn').disabled = true;
+}
+
+function toggleDiff() {
+  const el = document.getElementById('diff-content');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+// ── Submit run ──
+async function submitRun() {
+  const btn = document.getElementById('run-btn');
+  const yamlEl = document.getElementById('yaml-input');
+  const yamlText = yamlEl.value;
+  _lastYamlBeforeRun = yamlText;
+  _pendingFixPatch = null;
+  _fixedYaml = '';
+
+  const result = document.getElementById('result');
+  const verdict = document.getElementById('result-verdict');
+  const detail = document.getElementById('result-detail');
+  const evidence = document.getElementById('result-evidence');
+  const explainBox = document.getElementById('ai-explain-box');
+  const fixBar = document.getElementById('fix-bar');
+  const fixDesc = document.getElementById('fix-desc');
+  const fixApplyBtn = document.getElementById('fix-apply-btn');
+  const fixAdvisory = document.getElementById('fix-advisory');
+  const diffPanel = document.getElementById('diff-panel');
+  const diffContent = document.getElementById('diff-content');
+
+  btn.disabled = true; btn.textContent = 'Running...';
+  result.className = 'result';
+  explainBox.className = 'ai-box';
+  fixBar.className = 'fix-bar';
+  fixApplyBtn.style.display = 'none';
+  fixAdvisory.style.display = 'none';
+  diffPanel.className = 'diff-panel';
+  diffContent.style.display = 'none';
+
+  try {
+    const resp = await fetch('/runs', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: yamlText });
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      result.className = 'result show err';
+      verdict.className = 'verdict cant'; verdict.textContent = 'Error ' + resp.status;
+      detail.innerHTML = '<pre>' + JSON.stringify(data.detail, null, 2) + '</pre>';
+      evidence.textContent = '';
+      return;
+    }
+
+    const isCan = data.verdict === 'CAN';
+    result.className = 'result show ' + (isCan ? 'can' : 'cant');
+    verdict.className = 'verdict ' + (isCan ? 'can' : 'cant');
+    verdict.textContent = data.verdict;
+
+    let info = 'Run: ' + data.run_id;
+    if (data.failed_gate) info += ' | Failed: ' + data.failed_gate;
+    if (data.top_fix) info += ' | Fix: ' + data.top_fix;
+    info += ' | <a href="' + data.evidence_url + '" target="_blank">View evidence JSON</a>';
+    detail.innerHTML = info;
+    evidence.textContent = JSON.stringify(data.evidence, null, 2);
+
+    // ── Fix bar ──
+    if (!isCan && data.top_fix && data.evidence.counterfactual_fixes && data.evidence.counterfactual_fixes.length > 0) {
+      const fix = data.evidence.counterfactual_fixes[0];
+      fixBar.className = 'fix-bar show';
+      fixDesc.textContent = fix.instruction;
+
+      const patch = data.top_fix_patch;
+      if (patch && (patch.kind === 'MOVE_TARGET' || patch.kind === 'MOVE_BASE')) {
+        _pendingFixPatch = patch;
+        _fixedYaml = applyFixToYaml(_lastYamlBeforeRun, patch);
+
+        fixApplyBtn.style.display = 'inline-block';
+        fixApplyBtn.textContent = 'Apply fix to YAML';
+        fixApplyBtn.disabled = false;
+
+        diffPanel.className = 'diff-panel show';
+        diffContent.innerHTML = computeDiffHtml(_lastYamlBeforeRun, _fixedYaml);
+        diffContent.style.display = 'none';
+      } else {
+        fixAdvisory.textContent = 'Fix is advisory (not auto-applied yet).';
+        fixAdvisory.style.display = 'inline';
+      }
+    }
+
+    // ── AI explain ──
+    if (!isCan && AI_ENABLED) { fetchExplanation(data.evidence); }
+
+    // Reload after delay to refresh runs table.
+    setTimeout(() => location.reload(), 2000);
+  } catch (e) {
+    result.className = 'result show err';
+    verdict.className = 'verdict cant'; verdict.textContent = 'Network error';
+    detail.textContent = e.message; evidence.textContent = '';
+  } finally { btn.disabled = false; btn.textContent = 'Run gates'; }
+}
+</script>
+</body>
+</html>

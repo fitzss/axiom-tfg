@@ -1,0 +1,16 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - axiom-data:/app/data
+    env_file:
+      - .env
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - AXIOM_PUBLIC_BASE_URL=${AXIOM_PUBLIC_BASE_URL:-}
+    restart: unless-stopped
+
+volumes:
+  axiom-data:

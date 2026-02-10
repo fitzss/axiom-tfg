@@ -8,6 +8,7 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
+from axiom_tfg.gates.keepout import check_keepout
 from axiom_tfg.gates.payload import check_payload
 from axiom_tfg.gates.reachability import check_reachability
 from axiom_tfg.models import (
@@ -43,6 +44,7 @@ def validate_task_spec(path: Path) -> list[str]:
 GATE_PIPELINE = [
     check_reachability,
     check_payload,
+    check_keepout,
 ]
 
 

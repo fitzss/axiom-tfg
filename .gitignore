@@ -8,3 +8,7 @@ build/
 out/
 runs/
 ci-runs/
+data/
+.env
+.env.*
+!.env.example

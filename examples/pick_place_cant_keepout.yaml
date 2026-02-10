@@ -1,0 +1,34 @@
+task_id: pick-place-004-keepout
+meta:
+  template: pick_and_place
+
+substrate:
+  id: soda_can
+  mass_kg: 0.35
+  initial_pose:
+    xyz: [1.0, 0.0, 0.8]
+
+transformation:
+  target_pose:
+    xyz: [0.5, 0.5, 0.5]
+  tolerance_m: 0.01
+
+constructor:
+  id: ur5e
+  base_pose:
+    xyz: [0.0, 0.0, 0.0]
+  max_reach_m: 1.85
+  max_payload_kg: 5.0
+
+environment:
+  safety_buffer: 0.02
+  keepout_zones:
+    - id: conveyor_housing
+      min_xyz: [0.3, 0.3, 0.0]
+      max_xyz: [0.7, 0.7, 1.0]
+
+allowed_adjustments:
+  can_move_target: true
+  can_move_base: false
+  can_change_constructor: false
+  can_split_payload: false

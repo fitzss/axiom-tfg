@@ -9,6 +9,8 @@ Deterministic physical-task feasibility gate linter.
 
 Designed to run as a CI gate — exit code 0 means feasible, exit code 1 means not.
 
+Ships with a **web UI + REST API** (FastAPI) and a **Docker Compose** setup for one-command deployment on any VM (see [VULTR_DEPLOY.md](VULTR_DEPLOY.md)).
+
 ## Install
 
 Requires Python 3.11+.
@@ -33,6 +35,7 @@ Output:
   pick_place_can.yaml                 CAN          -               -
   pick_place_cant_reach.yaml          HARD_CANT    reachability    MOVE_TARGET
   pick_place_cant_payload.yaml        HARD_CANT    payload         SPLIT_PAYLOAD
+  pick_place_cant_keepout.yaml        HARD_CANT    keepout         MOVE_TARGET
 
 Evidence written to: runs/
 ```
@@ -67,7 +70,71 @@ tfg validate examples/pick_place_can.yaml
 tfg demo --out runs/
 ```
 
-Runs all three example YAMLs, prints a summary table, and writes evidence JSON for each.
+Runs all four example YAMLs, prints a summary table, and writes evidence JSON for each.
+
+## Web UI + API server
+
+### Environment variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GOOGLE_API_KEY` | No | Gemini API key. Enables the AI Assistant panel in the web UI. |
+| `AXIOM_PUBLIC_BASE_URL` | No | When set, `evidence_url` in API responses becomes an absolute URL (e.g. `https://axiom.example.com`). |
+
+Copy the example file and fill in your values:
+
+```bash
+cp .env.example .env
+# edit .env with your API key
+```
+
+### Run locally
+
+```bash
+pip install -e ".[dev]"
+source .env  # optional, for AI features
+uvicorn axiom_server.app:app --reload
+# open http://localhost:8000
+```
+
+### Run with Docker Compose
+
+```bash
+cp .env.example .env   # edit with your values
+docker compose up -d --build
+# open http://localhost:8000
+```
+
+### Demo flow
+
+1. Open `http://localhost:8000` in your browser.
+2. Paste a TaskSpec YAML into the text area (a sample is pre-filled).
+3. Click **Run gates**.
+4. See the verdict (`CAN` / `HARD_CANT`), failed gate, top fix, and full evidence JSON.
+5. The **Recent runs** table below updates with every run — click **evidence** to view the raw JSON.
+
+### API endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Health check — returns `{"status": "ok"}` |
+| `POST` | `/runs` | Submit a TaskSpec (YAML `text/plain` or JSON). Returns verdict + evidence. |
+| `GET` | `/runs` | List recent runs (default limit 50) |
+| `GET` | `/runs/{run_id}` | Get metadata for a single run |
+| `GET` | `/runs/{run_id}/evidence` | Download the evidence.json file |
+| `GET` | `/examples` | List bundled example YAML filenames |
+| `GET` | `/examples/{name}` | Get raw YAML text for a bundled example |
+| `GET` | `/ai/status` | AI feature status — `{"ai_enabled": true/false}` |
+| `POST` | `/ai/generate` | Generate a TaskSpec YAML from a natural-language prompt (requires `GOOGLE_API_KEY`) |
+| `POST` | `/ai/explain` | Get a 1-sentence explanation of an EvidencePacket (requires `GOOGLE_API_KEY`) |
+| `GET` | `/` | Web UI |
+
+```bash
+# Example: submit via curl
+curl -s -X POST http://localhost:8000/runs \
+  -H "Content-Type: text/plain" \
+  -d @examples/pick_place_can.yaml | python3 -m json.tool
+```
 
 ## Gates
 
@@ -77,12 +144,13 @@ Gates run in order; the first failure short-circuits.
 |------|--------|-------------|
 | **reachability** | Euclidean distance from `constructor.base_pose` to `transformation.target_pose` <= `max_reach_m` | `OUT_OF_REACH` |
 | **payload** | `substrate.mass_kg` <= `constructor.max_payload_kg` | `OVER_PAYLOAD` |
+| **keepout** | `transformation.target_pose` must not lie inside any `environment.keepout_zones` AABB (expanded by `safety_buffer`) | `IN_KEEP_OUT_ZONE` |
 
 ## Counterfactual fixes
 
 When a gate fails, the linter proposes ranked minimal-change fixes based on `allowed_adjustments`:
 
-- **MOVE_TARGET** — project target onto the reach sphere (reachability)
+- **MOVE_TARGET** — project target onto the reach sphere (reachability) or to nearest face outside keepout AABB (keepout)
 - **MOVE_BASE** — move constructor base toward target (reachability)
 - **SPLIT_PAYLOAD** — split into `ceil(mass / max_payload)` trips (payload)
 - **CHANGE_CONSTRUCTOR** — suggest replacing the constructor (fallback)
@@ -113,6 +181,13 @@ constructor:
     xyz: [0.0, 0.0, 0.0]
   max_reach_m: 1.85
   max_payload_kg: 5.0
+
+environment:                          # optional
+  safety_buffer: 0.02                  # metres, default 0.02
+  keepout_zones:
+    - id: conveyor_housing
+      min_xyz: [0.3, 0.3, 0.0]
+      max_xyz: [0.7, 0.7, 1.0]
 
 allowed_adjustments:
   can_move_target: true
@@ -158,6 +233,10 @@ steps:
   - run: tfg run my_task.yaml --out evidence/
   # Exit code 1 = HARD_CANT, which fails the step
 ```
+
+## Deployment
+
+See [VULTR_DEPLOY.md](VULTR_DEPLOY.md) for step-by-step instructions to deploy on a Vultr VM with Docker Compose.
 
 ## Tests
 

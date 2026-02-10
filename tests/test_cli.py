@@ -24,7 +24,7 @@ def test_run_can(tmp_path: Path) -> None:
     data = json.loads(evidence.read_text())
     assert data["verdict"] == "CAN"
     assert data["failed_gate"] is None
-    assert len(data["checks"]) == 2  # both gates ran
+    assert len(data["checks"]) == 3  # all gates ran
 
 
 def test_run_cant_reach(tmp_path: Path) -> None:
@@ -92,13 +92,15 @@ def test_demo_writes_all_evidence(tmp_path: Path) -> None:
     assert (tmp_path / "pick-place-001" / "evidence.json").exists()
     assert (tmp_path / "pick-place-002-reach" / "evidence.json").exists()
     assert (tmp_path / "pick-place-003-payload" / "evidence.json").exists()
+    assert (tmp_path / "pick-place-004-keepout" / "evidence.json").exists()
 
 
 def test_demo_output_contains_verdicts(tmp_path: Path) -> None:
     result = runner.invoke(app, ["demo", "--out", str(tmp_path)])
     assert "CAN" in result.output
     assert "HARD_CANT" in result.output
-    # All three example filenames appear in the table
+    # All example filenames appear in the table
     assert "pick_place_can.yaml" in result.output
     assert "pick_place_cant_reach.yaml" in result.output
     assert "pick_place_cant_payload.yaml" in result.output
+    assert "pick_place_cant_keepout.yaml" in result.output
