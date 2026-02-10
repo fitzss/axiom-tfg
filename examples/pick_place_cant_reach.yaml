@@ -1,0 +1,27 @@
+task_id: pick-place-002-reach
+meta:
+  template: pick_and_place
+
+substrate:
+  id: soda_can
+  mass_kg: 0.35
+  initial_pose:
+    xyz: [1.0, 0.0, 0.8]
+
+transformation:
+  target_pose:
+    xyz: [3.0, 3.0, 0.0]
+  tolerance_m: 0.01
+
+constructor:
+  id: ur5e
+  base_pose:
+    xyz: [0.0, 0.0, 0.0]
+  max_reach_m: 1.85
+  max_payload_kg: 5.0
+
+allowed_adjustments:
+  can_move_target: true
+  can_move_base: true
+  can_change_constructor: true
+  can_split_payload: false
