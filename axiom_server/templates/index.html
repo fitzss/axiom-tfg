@@ -83,6 +83,20 @@
     .fix-bar .fix-label { font-size: 0.7rem; color: var(--orange); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.3rem; }
     .fix-bar .fix-desc { font-size: 0.8rem; margin-bottom: 0.5rem; }
     .fix-advisory { color: var(--muted); font-size: 0.8rem; font-style: italic; }
+
+    /* ── Sweep ── */
+    .sweep-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem 1rem; margin-bottom: 0.75rem; }
+    .sweep-inputs .full { grid-column: 1 / -1; }
+    .sweep-range-row { display: flex; gap: 0.4rem; align-items: center; }
+    .sweep-range-row label { min-width: 30px; margin-bottom: 0; }
+    .sweep-range-row input { width: 80px; }
+    .sweep-summary { margin-top: 0.75rem; padding: 0.75rem; border-radius: 4px; background: #0f1a2a; border: 1px solid var(--blue); display: none; }
+    .sweep-summary.show { display: block; }
+    .sweep-summary .sweep-label { font-size: 0.7rem; color: var(--blue); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
+    .sweep-counts { display: flex; gap: 1.5rem; margin-bottom: 0.5rem; font-size: 0.9rem; }
+    .sweep-counts .can-count { color: var(--green); font-weight: bold; }
+    .sweep-counts .cant-count { color: var(--red); font-weight: bold; }
+    .sweep-tbl { max-height: 280px; overflow: auto; }
   </style>
 </head>
 <body>
@@ -211,6 +225,40 @@ allowed_adjustments:
         <div id="ai-explain-text"></div>
       </div>
       <div id="result-evidence" class="pre-wrap"></div>
+    </div>
+  </div>
+
+  <!-- ── Scenario Sweep ── -->
+  <div class="card">
+    <label>Scenario Sweep</label>
+    <div style="color: var(--muted); font-size: 0.75rem; margin-bottom: 0.5rem;">Generate many variants of the current YAML and run all gates. Results are deterministic by seed.</div>
+    <div class="sweep-inputs">
+      <div class="field"><label>n (variants)</label><input type="number" id="sw-n" value="20" min="1" max="500"></div>
+      <div class="field"><label>seed</label><input type="number" id="sw-seed" value="1337"></div>
+      <div class="field full"><div class="section-title" style="margin-top:0;">mass_kg range (optional)</div></div>
+      <div class="field"><label>min</label><input type="number" id="sw-mass-min" placeholder="e.g. 0.1" step="0.1"></div>
+      <div class="field"><label>max</label><input type="number" id="sw-mass-max" placeholder="e.g. 10.0" step="0.1"></div>
+      <div class="field full"><div class="section-title" style="margin-top:0;">target_xyz ranges (optional)</div></div>
+      <div class="field"><label>x min</label><input type="number" id="sw-tx-min" placeholder="" step="0.1"></div>
+      <div class="field"><label>x max</label><input type="number" id="sw-tx-max" placeholder="" step="0.1"></div>
+      <div class="field"><label>y min</label><input type="number" id="sw-ty-min" placeholder="" step="0.1"></div>
+      <div class="field"><label>y max</label><input type="number" id="sw-ty-max" placeholder="" step="0.1"></div>
+      <div class="field"><label>z min</label><input type="number" id="sw-tz-min" placeholder="" step="0.1"></div>
+      <div class="field"><label>z max</label><input type="number" id="sw-tz-max" placeholder="" step="0.1"></div>
+    </div>
+    <button id="sweep-btn" onclick="runSweep()">Run Sweep</button>
+    <div id="sweep-status" style="color: var(--muted); font-size: 0.8rem; margin-top: 0.4rem;"></div>
+    <div id="sweep-summary" class="sweep-summary">
+      <div class="sweep-label">Sweep Results</div>
+      <div id="sweep-counts" class="sweep-counts"></div>
+      <div id="sweep-gates" style="font-size: 0.8rem; color: var(--muted); margin-bottom: 0.5rem;"></div>
+      <div id="sweep-link" style="font-size: 0.8rem; margin-bottom: 0.5rem;"></div>
+      <div class="sweep-tbl">
+        <table>
+          <thead><tr><th>Run ID</th><th>Verdict</th><th>Failed gate</th><th></th></tr></thead>
+          <tbody id="sweep-runs"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -555,6 +603,83 @@ async function submitRun() {
     verdict.className = 'verdict cant'; verdict.textContent = 'Network error';
     detail.textContent = e.message; evidence.textContent = '';
   } finally { btn.disabled = false; btn.textContent = 'Run gates'; }
+}
+
+// ── Sweep ──
+function _swVal(id) { const v = document.getElementById(id).value; return v === '' ? null : parseFloat(v); }
+
+async function runSweep() {
+  const btn = document.getElementById('sweep-btn');
+  const status = document.getElementById('sweep-status');
+  const summaryEl = document.getElementById('sweep-summary');
+  const yamlText = document.getElementById('yaml-input').value;
+
+  if (!yamlText.trim()) { status.textContent = 'Paste a TaskSpec YAML first.'; return; }
+
+  btn.disabled = true; btn.textContent = 'Running sweep...'; status.textContent = '';
+  summaryEl.className = 'sweep-summary';
+
+  const variations = {};
+  const massMin = _swVal('sw-mass-min'), massMax = _swVal('sw-mass-max');
+  if (massMin !== null && massMax !== null) variations.mass_kg = { min: massMin, max: massMax };
+
+  const txyz = {};
+  const txMin = _swVal('sw-tx-min'), txMax = _swVal('sw-tx-max');
+  if (txMin !== null && txMax !== null) txyz.x = { min: txMin, max: txMax };
+  const tyMin = _swVal('sw-ty-min'), tyMax = _swVal('sw-ty-max');
+  if (tyMin !== null && tyMax !== null) txyz.y = { min: tyMin, max: tyMax };
+  const tzMin = _swVal('sw-tz-min'), tzMax = _swVal('sw-tz-max');
+  if (tzMin !== null && tzMax !== null) txyz.z = { min: tzMin, max: tzMax };
+  if (Object.keys(txyz).length) variations.target_xyz = txyz;
+
+  try {
+    const resp = await fetch('/sweeps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        base_yaml: yamlText,
+        variations: variations,
+        n: parseInt(document.getElementById('sw-n').value) || 20,
+        seed: parseInt(document.getElementById('sw-seed').value) || 1337,
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      status.textContent = 'Error: ' + (data.detail || resp.status);
+      return;
+    }
+
+    summaryEl.className = 'sweep-summary show';
+    const s = data.summary;
+    document.getElementById('sweep-counts').innerHTML =
+      '<span class="can-count">CAN: ' + s.CAN + '</span>' +
+      '<span class="cant-count">HARD_CANT: ' + s.HARD_CANT + '</span>' +
+      '<span style="color:var(--muted);">n=' + data.n + ' seed=' + data.seed + '</span>';
+
+    const gates = Object.entries(s.by_failed_gate || {}).map(([g,c]) => g + ': ' + c).join(', ');
+    document.getElementById('sweep-gates').textContent = gates ? 'By gate: ' + gates : '';
+    document.getElementById('sweep-link').innerHTML = '<a href="/sweeps/' + data.sweep_id + '" target="_blank">View full sweep JSON</a>';
+
+    const tbody = document.getElementById('sweep-runs');
+    tbody.innerHTML = '';
+    const show = data.runs.slice(0, 10);
+    show.forEach(r => {
+      const cls = r.verdict === 'CAN' ? 'can' : 'cant';
+      tbody.innerHTML += '<tr><td><code>' + r.run_id + '</code></td>' +
+        '<td><span class="badge ' + cls + '">' + r.verdict + '</span></td>' +
+        '<td>' + (r.failed_gate || '-') + '</td>' +
+        '<td><a href="' + r.evidence_url + '" target="_blank">evidence</a></td></tr>';
+    });
+    if (data.runs.length > 10) {
+      tbody.innerHTML += '<tr><td colspan="4" style="color:var(--muted);text-align:center;">... and ' + (data.runs.length - 10) + ' more</td></tr>';
+    }
+
+    status.textContent = 'Sweep complete: ' + data.n + ' variants.';
+  } catch (e) {
+    status.textContent = 'Network error: ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Run Sweep';
+  }
 }
 </script>
 </body>

@@ -19,6 +19,7 @@ import axiom_server.app as app_module  # noqa: E402
 
 app_module.DATA_DIR = Path(_tmpdir)
 app_module.RUNS_DIR = Path(_tmpdir) / "runs"
+app_module.SWEEPS_DIR = Path(_tmpdir) / "sweeps"
 app_module.store = app_module.RunStore(Path(_tmpdir) / "axiom.db")
 
 from axiom_server.app import app  # noqa: E402

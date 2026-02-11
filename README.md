@@ -127,6 +127,8 @@ docker compose up -d --build
 | `GET` | `/ai/status` | AI feature status — `{"ai_enabled": true/false}` |
 | `POST` | `/ai/generate` | Generate a TaskSpec YAML from a natural-language prompt (requires `GOOGLE_API_KEY`) |
 | `POST` | `/ai/explain` | Get a 1-sentence explanation of an EvidencePacket (requires `GOOGLE_API_KEY`) |
+| `POST` | `/sweeps` | Run a Scenario Sweep — generate variants and run all gates (see below) |
+| `GET` | `/sweeps/{sweep_id}` | Get saved sweep summary + run IDs |
 | `GET` | `/` | Web UI |
 
 ```bash
@@ -212,6 +214,29 @@ allowed_adjustments:
   "axiom_tfg_version": "0.1.0"
 }
 ```
+
+## Scenario Sweep
+
+Fast feasibility sweeps — not full physics simulation, but deterministic gate checks across many TaskSpec variants. Useful for mapping a robot's capability envelope.
+
+The sweep engine samples `mass_kg` and `target_pose.xyz` uniformly within provided ranges, generates `n` variants, and runs each through the full gate pipeline. Results are deterministic for a given seed.
+
+```bash
+# Example: sweep 50 variants with mass 0.1–10 kg, target x 0.5–3.0 m
+curl -s -X POST http://localhost:8000/sweeps \
+  -H "Content-Type: application/json" \
+  -d '{
+    "base_yaml": "task_id: sweep-demo\nmeta:\n  template: pick_and_place\nsubstrate:\n  id: box\n  mass_kg: 1.0\n  initial_pose:\n    xyz: [1.0, 0.0, 0.8]\ntransformation:\n  target_pose:\n    xyz: [1.2, 0.3, 0.8]\n  tolerance_m: 0.01\nconstructor:\n  id: ur5e\n  base_pose:\n    xyz: [0.0, 0.0, 0.0]\n  max_reach_m: 1.85\n  max_payload_kg: 5.0\nallowed_adjustments:\n  can_move_target: true\n",
+    "variations": {
+      "mass_kg": {"min": 0.1, "max": 10.0},
+      "target_xyz": {"x": {"min": 0.5, "max": 3.0}}
+    },
+    "n": 50,
+    "seed": 1337
+  }' | python3 -m json.tool
+```
+
+The response includes a summary with CAN/HARD_CANT counts, breakdown by failed gate, top reason codes, and individual run links.
 
 ## Using in CI
 

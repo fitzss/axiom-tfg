@@ -20,11 +20,18 @@ from axiom_tfg.models import TaskSpec
 
 from axiom_server import ai
 from axiom_server.db import RunStore
+from axiom_server.sweep import (
+    SweepRequest,
+    build_summary,
+    generate_variants,
+    parse_variations,
+)
 
 # ── configurable paths ────────────────────────────────────────────────────
 
 DATA_DIR = Path(os.environ.get("AXIOM_DATA_DIR", "data"))
 RUNS_DIR = DATA_DIR / "runs"
+SWEEPS_DIR = DATA_DIR / "sweeps"
 EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "examples"
 PUBLIC_BASE_URL = os.environ.get("AXIOM_PUBLIC_BASE_URL", "").rstrip("/")
 
@@ -127,9 +134,7 @@ async def create_run(request: Request) -> JSONResponse:
         evidence_path=str(run_evidence),
     )
 
-    evidence_url = f"/runs/{run_id}/evidence"
-    if PUBLIC_BASE_URL:
-        evidence_url = f"{PUBLIC_BASE_URL}{evidence_url}"
+    evidence_url = _make_evidence_url(run_id)
 
     return JSONResponse(
         content={
@@ -199,6 +204,137 @@ def get_example(name: str) -> PlainTextResponse:
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Example not found")
     return PlainTextResponse(path.read_text(encoding="utf-8"))
+
+
+# ── sweep endpoints ──────────────────────────────────────────────────────
+
+
+def _make_evidence_url(run_id: str) -> str:
+    url = f"/runs/{run_id}/evidence"
+    if PUBLIC_BASE_URL:
+        url = f"{PUBLIC_BASE_URL}{url}"
+    return url
+
+
+@app.post("/sweeps")
+async def create_sweep(request: Request) -> JSONResponse:
+    body = await request.json()
+
+    # Parse base task from YAML text or JSON object.
+    base_yaml = body.get("base_yaml")
+    base_json = body.get("base_json")
+    if base_yaml:
+        try:
+            raw = yaml.safe_load(base_yaml)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"YAML parse error: {exc}")
+    elif base_json:
+        raw = base_json
+    else:
+        raise HTTPException(status_code=400, detail="base_yaml or base_json is required")
+
+    try:
+        base_task = TaskSpec.model_validate(raw)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors())
+
+    n = min(max(int(body.get("n", 50)), 1), 500)
+    seed = int(body.get("seed", 1337))
+
+    variations = parse_variations(body.get("variations"))
+
+    sweep_req = SweepRequest(
+        base_task=base_task,
+        variations=variations,
+        n=n,
+        seed=seed,
+    )
+
+    variants = generate_variants(base_task, sweep_req)
+
+    # Run each variant through the gate pipeline and persist.
+    runs: list[dict] = []
+    all_results: list[dict] = []
+
+    for spec in variants:
+        packet = run_gates(spec)
+
+        run_id = uuid.uuid4().hex[:12]
+        evidence_dir = RUNS_DIR / run_id
+        evidence_dir.mkdir(parents=True, exist_ok=True)
+        run_evidence = evidence_dir / "evidence.json"
+        run_evidence.write_text(
+            json.dumps(packet.model_dump(mode="json"), indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        top_fix: str | None = None
+        if packet.counterfactual_fixes:
+            top_fix = packet.counterfactual_fixes[0].type.value
+
+        now = datetime.now(timezone.utc).isoformat()
+        store.insert(
+            run_id=run_id,
+            task_id=spec.task_id,
+            created_at=now,
+            verdict=packet.verdict.value,
+            failed_gate=packet.failed_gate,
+            top_fix=top_fix,
+            evidence_path=str(run_evidence),
+        )
+
+        result_row = {
+            "run_id": run_id,
+            "verdict": packet.verdict.value,
+            "failed_gate": packet.failed_gate,
+            "evidence_url": _make_evidence_url(run_id),
+            "evidence": packet.model_dump(mode="json"),
+        }
+        runs.append({
+            "run_id": run_id,
+            "verdict": packet.verdict.value,
+            "failed_gate": packet.failed_gate,
+            "evidence_url": _make_evidence_url(run_id),
+        })
+        all_results.append(result_row)
+
+    summary = build_summary(all_results)
+
+    sweep_id = uuid.uuid4().hex[:12]
+    sweep_data = {
+        "sweep_id": sweep_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "request": {
+            "base_task_id": base_task.task_id,
+            "n": n,
+            "seed": seed,
+        },
+        "summary": summary,
+        "run_ids": [r["run_id"] for r in runs],
+    }
+    SWEEPS_DIR.mkdir(parents=True, exist_ok=True)
+    sweep_path = SWEEPS_DIR / f"{sweep_id}.json"
+    sweep_path.write_text(
+        json.dumps(sweep_data, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    return JSONResponse(content={
+        "sweep_id": sweep_id,
+        "n": n,
+        "seed": seed,
+        "summary": summary,
+        "runs": runs,
+    })
+
+
+@app.get("/sweeps/{sweep_id}")
+def get_sweep(sweep_id: str) -> JSONResponse:
+    path = SWEEPS_DIR / f"{sweep_id}.json"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Sweep not found")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return JSONResponse(content=data)
 
 
 # ── AI endpoints ─────────────────────────────────────────────────────────

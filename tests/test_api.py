@@ -19,6 +19,7 @@ import axiom_server.app as app_module  # noqa: E402
 
 app_module.DATA_DIR = Path(_tmpdir)
 app_module.RUNS_DIR = Path(_tmpdir) / "runs"
+app_module.SWEEPS_DIR = Path(_tmpdir) / "sweeps"
 app_module.store = app_module.RunStore(Path(_tmpdir) / "axiom.db")
 
 from axiom_server.app import app  # noqa: E402
@@ -284,3 +285,93 @@ def test_ai_status_enabled_with_key() -> None:
     data = resp.json()
     assert data["ai_enabled"] is True
     assert "reason" not in data
+
+
+# ── POST /sweeps ──────────────────────────────────────────────────────────
+
+
+_SWEEP_BASE = SAMPLE_YAML
+
+_SWEEP_PAYLOAD = {
+    "base_yaml": _SWEEP_BASE,
+    "variations": {
+        "mass_kg": {"min": 0.1, "max": 8.0},
+        "target_xyz": {
+            "x": {"min": 0.5, "max": 3.0},
+            "y": {"min": -1.0, "max": 1.0},
+        },
+    },
+    "n": 10,
+    "seed": 42,
+}
+
+
+def test_post_sweeps_returns_deterministic_summary() -> None:
+    """Run the same sweep twice — summary and first 3 verdicts must match."""
+    resp1 = client.post("/sweeps", json=_SWEEP_PAYLOAD)
+    assert resp1.status_code == 200
+    data1 = resp1.json()
+    assert data1["n"] == 10
+    assert data1["seed"] == 42
+    assert data1["summary"]["CAN"] + data1["summary"]["HARD_CANT"] == 10
+
+    resp2 = client.post("/sweeps", json=_SWEEP_PAYLOAD)
+    assert resp2.status_code == 200
+    data2 = resp2.json()
+
+    # Same summary counts.
+    assert data1["summary"]["CAN"] == data2["summary"]["CAN"]
+    assert data1["summary"]["HARD_CANT"] == data2["summary"]["HARD_CANT"]
+    assert data1["summary"]["by_failed_gate"] == data2["summary"]["by_failed_gate"]
+
+    # Same first 3 run verdicts / failed_gate.
+    for i in range(min(3, len(data1["runs"]))):
+        assert data1["runs"][i]["verdict"] == data2["runs"][i]["verdict"]
+        assert data1["runs"][i]["failed_gate"] == data2["runs"][i]["failed_gate"]
+
+
+def test_post_sweeps_respects_bounds() -> None:
+    """Tight bounds — sampled values must stay within range."""
+    payload = {
+        "base_yaml": _SWEEP_BASE,
+        "variations": {
+            "mass_kg": {"min": 1.0, "max": 1.5},
+            "target_xyz": {"x": {"min": 0.8, "max": 0.9}},
+        },
+        "n": 5,
+        "seed": 99,
+    }
+    resp = client.post("/sweeps", json=payload)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["runs"]) == 5
+
+    for run in data["runs"]:
+        run_id = run["run_id"]
+        ev_resp = client.get(f"/runs/{run_id}/evidence")
+        assert ev_resp.status_code == 200
+        evidence = ev_resp.json()
+        # Mass should appear in payload check measured_values.
+        for check in evidence["checks"]:
+            mv = check.get("measured_values", {})
+            if "mass_kg" in mv:
+                assert 1.0 <= mv["mass_kg"] <= 1.5
+
+
+def test_get_sweep_returns_saved_json() -> None:
+    """POST /sweeps then GET /sweeps/{id} returns 200 with run_ids."""
+    resp = client.post("/sweeps", json=_SWEEP_PAYLOAD)
+    assert resp.status_code == 200
+    sweep_id = resp.json()["sweep_id"]
+
+    get_resp = client.get(f"/sweeps/{sweep_id}")
+    assert get_resp.status_code == 200
+    data = get_resp.json()
+    assert data["sweep_id"] == sweep_id
+    assert len(data["run_ids"]) == 10
+    assert "summary" in data
+
+
+def test_get_sweep_not_found() -> None:
+    resp = client.get("/sweeps/nonexistent")
+    assert resp.status_code == 404
