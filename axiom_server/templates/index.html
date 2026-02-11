@@ -51,7 +51,15 @@
     .ai-box { margin-top: 0.75rem; padding: 0.75rem; border-radius: 4px; background: #1a1030; border: 1px solid var(--purple); font-size: 0.85rem; display: none; }
     .ai-box.show { display: block; }
     .ai-box .ai-label { font-size: 0.7rem; color: var(--purple); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.3rem; }
-    .ai-disabled { color: var(--muted); font-size: 0.75rem; padding: 0.5rem 0.75rem; background: rgba(168,85,247,0.08); border: 1px solid var(--border); border-radius: 4px; margin-bottom: 1.5rem; }
+    .ai-disabled { color: var(--muted); font-size: 0.75rem; padding: 0.5rem 0.75rem; background: rgba(168,85,247,0.08); border: 1px solid var(--border); border-radius: 4px; margin-top: 0.75rem; }
+
+    /* ── Prompt Mode ── */
+    #promptInput { min-height: 80px; }
+    #prompt-mode-card textarea:disabled, #prompt-mode-card select:disabled, #prompt-mode-card button:disabled { opacity: 0.4; }
+
+    /* ── Summary Cards ── */
+    .summary-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; }
+    .summary-grid .card { margin-bottom: 0; }
 
     /* ── Task Builder ── */
     .builder-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem 1.25rem; margin-bottom: 0.75rem; }
@@ -97,6 +105,13 @@
     .sweep-counts .can-count { color: var(--green); font-weight: bold; }
     .sweep-counts .cant-count { color: var(--red); font-weight: bold; }
     .sweep-tbl { max-height: 280px; overflow: auto; }
+
+    /* ── Advanced toggle ── */
+    details#advanced-toggle { margin-bottom: 1.5rem; }
+    details#advanced-toggle > summary { list-style: none; cursor: pointer; color: var(--blue); font-size: 0.85rem; margin-bottom: 1rem; user-select: none; }
+    details#advanced-toggle > summary::-webkit-details-marker { display: none; }
+    details#advanced-toggle > summary::before { content: '+ '; font-weight: bold; }
+    details#advanced-toggle[open] > summary::before { content: '- '; }
   </style>
 </head>
 <body>
@@ -104,78 +119,145 @@
   <h1>axiom-tfg</h1>
   <p class="subtitle">Deterministic physical-task feasibility gate linter</p>
 
-  <!-- ── AI Assistant ── -->
-  {% if ai_enabled %}
-  <div class="card">
-    <label for="ai-prompt">AI Assistant (Gemini)</label>
-    <div style="color: var(--muted); font-size: 0.75rem; margin-bottom: 0.5rem;">Generate YAML from English, then click Run gates.</div>
-    <input type="text" id="ai-prompt" style="width:100%;" placeholder="e.g. 'Pick a 2kg box from shelf at [1,0,1] and place it at [2,1,0.5] with a UR5e robot'">
-    <button class="btn-ai" id="ai-gen-btn" onclick="generateSpec()">Generate TaskSpec</button>
-    <div id="ai-gen-status" style="color: var(--muted); font-size: 0.8rem; margin-top: 0.4rem;"></div>
+  <!-- ── Prompt Mode ── -->
+  <div class="card" id="prompt-mode-card">
+    <label for="promptInput">Describe your task
+      {% if ai_enabled %}
+      <span id="prompt-provider-tag" style="font-size:0.65rem; color:var(--purple); text-transform:none;">({{ ai_status.provider }})</span>
+      {% endif %}
+      {% if ai_status.provider == 'fallback' %}
+      <span class="badge" style="background:#2a1a00;color:var(--orange);margin-left:0.5rem;">Demo Mode</span>
+      {% endif %}
+    </label>
+    {% if ai_status.provider == 'fallback' %}
+    <div style="color: var(--orange); font-size: 0.75rem; margin-bottom: 0.5rem;">Demo fallback mode — responses are generated locally (no API key configured).</div>
+    {% elif ai_enabled %}
+    <div style="color: var(--muted); font-size: 0.75rem; margin-bottom: 0.5rem;">Type a task description, then click Generate + Run. Press Ctrl+Enter for a shortcut.</div>
+    {% endif %}
+    <textarea id="promptInput" rows="3" spellcheck="false"
+      placeholder="e.g. 'Pick a 2kg box from [1,0,1] to [2,1,0.5] with a UR5e'&#10;e.g. 'Move a 0.5kg soda can to [0.8, 0.2, 0.9] using a franka robot'"
+      {% if not ai_enabled %}disabled{% endif %}></textarea>
+    <div style="display:flex; gap:0.5rem; align-items:end; margin-top:0.5rem;">
+      <div class="field" style="flex:0 0 auto;">
+        <label>Model</label>
+        <select id="ai-model-select" {% if not ai_enabled %}disabled{% endif %}></select>
+      </div>
+      <button class="btn-ai" id="generateRunBtn" onclick="generateAndRun()" {% if not ai_enabled %}disabled{% endif %}>Generate + Run</button>
+    </div>
+    {% if not ai_enabled %}
+    <div class="ai-disabled">AI disabled: {{ ai_status.reason | default('set GOOGLE_API_KEY or AXIOM_AI_DEMO_FALLBACK=true to enable.') }}</div>
+    {% endif %}
+    <div id="prompt-status" style="color: var(--muted); font-size: 0.8rem; margin-top: 0.4rem;"></div>
   </div>
-  {% else %}
-  <div class="ai-disabled">AI disabled: set <code>GOOGLE_API_KEY</code> to enable English &rarr; YAML generation.</div>
-  {% endif %}
 
-  <!-- ── Load Demo ── -->
-  <div class="card">
-    <label for="demo-select">Load Demo</label>
-    <div style="display:flex; gap:0.5rem; align-items:end;">
-      <select id="demo-select" style="flex:1;"><option value="">-- select an example --</option></select>
-      <button class="btn-sm" onclick="loadDemo()">Load</button>
+  <!-- ── Summary Cards ── -->
+  <div id="summary-cards" style="display:none; margin-bottom:1.5rem;">
+    <div class="summary-grid">
+      <div class="card">
+        <label>Robot</label>
+        <div id="card-robot-name" style="font-size:1rem; font-weight:bold;"></div>
+        <div id="card-robot-detail" style="font-size:0.8rem; color:var(--muted);"></div>
+      </div>
+      <div class="card">
+        <label>Object</label>
+        <div id="card-object-name" style="font-size:1rem; font-weight:bold;"></div>
+        <div id="card-object-detail" style="font-size:0.8rem; color:var(--muted);"></div>
+      </div>
+      <div class="card">
+        <label>World</label>
+        <div id="card-world-name" style="font-size:1rem; font-weight:bold;"></div>
+        <div id="card-world-detail" style="font-size:0.8rem; color:var(--muted);"></div>
+      </div>
     </div>
   </div>
 
-  <!-- ── Task Builder ── -->
-  <div class="card">
-    <label>Task Builder</label>
-    <div class="section-title" style="margin-top:0;">Substrate</div>
-    <div class="builder-grid">
-      <div class="field"><label>task_id</label><input type="text" id="b-task-id" value="my-task-001"></div>
-      <div class="field"><label>substrate.id</label><input type="text" id="b-sub-id" value="soda_can"></div>
-      <div class="field"><label>substrate.mass_kg</label><input type="number" id="b-sub-mass" value="0.35" step="0.01" min="0.001"></div>
-      <div class="field"><label>substrate.initial_pose.xyz</label><div class="xyz-row"><input type="number" id="b-sub-x" value="1.0" step="0.1"><input type="number" id="b-sub-y" value="0.0" step="0.1"><input type="number" id="b-sub-z" value="0.8" step="0.1"></div></div>
-    </div>
+  <!-- ── Result Display ── -->
+  <div id="result" class="result">
+    <div id="result-verdict" class="verdict"></div>
+    <div id="result-detail" class="detail"></div>
 
-    <div class="section-title">Constructor</div>
-    <div class="builder-grid">
-      <div class="field"><label>constructor.id</label><input type="text" id="b-con-id" value="ur5e"></div>
-      <div class="field"><label>constructor.base_pose.xyz</label><div class="xyz-row"><input type="number" id="b-con-x" value="0.0" step="0.1"><input type="number" id="b-con-y" value="0.0" step="0.1"><input type="number" id="b-con-z" value="0.0" step="0.1"></div></div>
-      <div class="field"><label>max_reach_m</label><input type="number" id="b-con-reach" value="1.85" step="0.01" min="0.001"></div>
-      <div class="field"><label>max_payload_kg</label><input type="number" id="b-con-payload" value="5.0" step="0.1" min="0.001"></div>
-    </div>
-
-    <div class="section-title">Transformation</div>
-    <div class="builder-grid">
-      <div class="field"><label>target_pose.xyz</label><div class="xyz-row"><input type="number" id="b-tgt-x" value="1.2" step="0.1"><input type="number" id="b-tgt-y" value="0.3" step="0.1"><input type="number" id="b-tgt-z" value="0.8" step="0.1"></div></div>
-      <div class="field"><label>tolerance_m</label><input type="number" id="b-tgt-tol" value="0.01" step="0.001" min="0.001"></div>
-    </div>
-
-    <div class="section-title">Environment</div>
-    <div class="builder-grid">
-      <div class="field"><label>safety_buffer</label><input type="number" id="b-env-buffer" value="0.02" step="0.01" min="0"></div>
-      <div class="field full">
-        <label>Keepout zones</label>
-        <div id="zone-list"></div>
-        <button class="btn-sm" onclick="addZone()">+ Add zone</button>
+    <!-- Fix bar -->
+    <div id="fix-bar" class="fix-bar">
+      <div class="fix-label">Counterfactual Fix</div>
+      <div id="fix-desc" class="fix-desc"></div>
+      <button id="fix-apply-btn" class="btn-orange btn-sm" onclick="applyFix()" style="display:none;">Apply fix to YAML</button>
+      <span id="fix-advisory" class="fix-advisory" style="display:none;"></span>
+      <div id="diff-panel" class="diff-panel">
+        <span class="diff-toggle" onclick="toggleDiff()">Show diff</span>
+        <div id="diff-content" class="diff-content" style="display:none;"></div>
       </div>
     </div>
 
-    <div class="section-title">Allowed adjustments</div>
-    <div class="checkbox-row">
-      <label><input type="checkbox" id="b-adj-target" checked> can_move_target</label>
-      <label><input type="checkbox" id="b-adj-base"> can_move_base</label>
-      <label><input type="checkbox" id="b-adj-constructor"> can_change_constructor</label>
-      <label><input type="checkbox" id="b-adj-split"> can_split_payload</label>
+    <div id="ai-explain-box" class="ai-box">
+      <div class="ai-label">AI Explanation</div>
+      <div id="ai-explain-text"></div>
     </div>
-
-    <button class="btn-green" onclick="buildYaml()" style="margin-top:0.75rem;">Generate YAML</button>
+    <div id="result-evidence" class="pre-wrap"></div>
   </div>
 
-  <!-- ── YAML Editor + Run ── -->
-  <div class="card">
-    <label for="yaml-input">TaskSpec YAML (source of truth)</label>
-    <textarea id="yaml-input" spellcheck="false" placeholder="Paste your TaskSpec YAML here...">task_id: my-task-001
+  <!-- ── Advanced / Inspect YAML ── -->
+  <details id="advanced-toggle">
+    <summary>Inspect YAML / Advanced <span style="color:var(--muted); font-size:0.75rem; margin-left:0.5rem;">YAML editor, Task Builder, Load Demo, Sweep</span></summary>
+
+    <!-- ── Load Demo ── -->
+    <div class="card">
+      <label for="demo-select">Load Demo</label>
+      <div style="display:flex; gap:0.5rem; align-items:end;">
+        <select id="demo-select" style="flex:1;"><option value="">-- select an example --</option></select>
+        <button class="btn-sm" onclick="loadDemo()">Load</button>
+      </div>
+    </div>
+
+    <!-- ── Task Builder ── -->
+    <div class="card">
+      <label>Task Builder</label>
+      <div class="section-title" style="margin-top:0;">Substrate</div>
+      <div class="builder-grid">
+        <div class="field"><label>task_id</label><input type="text" id="b-task-id" value="my-task-001"></div>
+        <div class="field"><label>substrate.id</label><input type="text" id="b-sub-id" value="soda_can"></div>
+        <div class="field"><label>substrate.mass_kg</label><input type="number" id="b-sub-mass" value="0.35" step="0.01" min="0.001"></div>
+        <div class="field"><label>substrate.initial_pose.xyz</label><div class="xyz-row"><input type="number" id="b-sub-x" value="1.0" step="0.1"><input type="number" id="b-sub-y" value="0.0" step="0.1"><input type="number" id="b-sub-z" value="0.8" step="0.1"></div></div>
+      </div>
+
+      <div class="section-title">Constructor</div>
+      <div class="builder-grid">
+        <div class="field"><label>constructor.id</label><input type="text" id="b-con-id" value="ur5e"></div>
+        <div class="field"><label>constructor.base_pose.xyz</label><div class="xyz-row"><input type="number" id="b-con-x" value="0.0" step="0.1"><input type="number" id="b-con-y" value="0.0" step="0.1"><input type="number" id="b-con-z" value="0.0" step="0.1"></div></div>
+        <div class="field"><label>max_reach_m</label><input type="number" id="b-con-reach" value="1.85" step="0.01" min="0.001"></div>
+        <div class="field"><label>max_payload_kg</label><input type="number" id="b-con-payload" value="5.0" step="0.1" min="0.001"></div>
+      </div>
+
+      <div class="section-title">Transformation</div>
+      <div class="builder-grid">
+        <div class="field"><label>target_pose.xyz</label><div class="xyz-row"><input type="number" id="b-tgt-x" value="1.2" step="0.1"><input type="number" id="b-tgt-y" value="0.3" step="0.1"><input type="number" id="b-tgt-z" value="0.8" step="0.1"></div></div>
+        <div class="field"><label>tolerance_m</label><input type="number" id="b-tgt-tol" value="0.01" step="0.001" min="0.001"></div>
+      </div>
+
+      <div class="section-title">Environment</div>
+      <div class="builder-grid">
+        <div class="field"><label>safety_buffer</label><input type="number" id="b-env-buffer" value="0.02" step="0.01" min="0"></div>
+        <div class="field full">
+          <label>Keepout zones</label>
+          <div id="zone-list"></div>
+          <button class="btn-sm" onclick="addZone()">+ Add zone</button>
+        </div>
+      </div>
+
+      <div class="section-title">Allowed adjustments</div>
+      <div class="checkbox-row">
+        <label><input type="checkbox" id="b-adj-target" checked> can_move_target</label>
+        <label><input type="checkbox" id="b-adj-base"> can_move_base</label>
+        <label><input type="checkbox" id="b-adj-constructor"> can_change_constructor</label>
+        <label><input type="checkbox" id="b-adj-split"> can_split_payload</label>
+      </div>
+
+      <button class="btn-green" onclick="buildYaml()" style="margin-top:0.75rem;">Generate YAML</button>
+    </div>
+
+    <!-- ── YAML Editor + Run ── -->
+    <div class="card">
+      <label for="yaml-input">TaskSpec YAML (source of truth)</label>
+      <textarea id="yaml-input" spellcheck="false" placeholder="Paste your TaskSpec YAML here...">task_id: my-task-001
 meta:
   template: pick_and_place
 
@@ -202,65 +284,43 @@ allowed_adjustments:
   can_move_base: false
   can_change_constructor: true
   can_split_payload: false</textarea>
-    <button id="run-btn" onclick="submitRun()">Run gates</button>
+      <button id="run-btn" onclick="submitRun()">Run gates</button>
+    </div>
 
-    <div id="result" class="result">
-      <div id="result-verdict" class="verdict"></div>
-      <div id="result-detail" class="detail"></div>
-
-      <!-- Fix bar -->
-      <div id="fix-bar" class="fix-bar">
-        <div class="fix-label">Counterfactual Fix</div>
-        <div id="fix-desc" class="fix-desc"></div>
-        <button id="fix-apply-btn" class="btn-orange btn-sm" onclick="applyFix()" style="display:none;">Apply fix to YAML</button>
-        <span id="fix-advisory" class="fix-advisory" style="display:none;"></span>
-        <div id="diff-panel" class="diff-panel">
-          <span class="diff-toggle" onclick="toggleDiff()">Show diff</span>
-          <div id="diff-content" class="diff-content" style="display:none;"></div>
+    <!-- ── Scenario Sweep ── -->
+    <div class="card">
+      <label>Scenario Sweep</label>
+      <div style="color: var(--muted); font-size: 0.75rem; margin-bottom: 0.5rem;">Generate many variants of the current YAML and run all gates. Results are deterministic by seed.</div>
+      <div class="sweep-inputs">
+        <div class="field"><label>n (variants)</label><input type="number" id="sw-n" value="20" min="1" max="500"></div>
+        <div class="field"><label>seed</label><input type="number" id="sw-seed" value="1337"></div>
+        <div class="field full"><div class="section-title" style="margin-top:0;">mass_kg range (optional)</div></div>
+        <div class="field"><label>min</label><input type="number" id="sw-mass-min" placeholder="e.g. 0.1" step="0.1"></div>
+        <div class="field"><label>max</label><input type="number" id="sw-mass-max" placeholder="e.g. 10.0" step="0.1"></div>
+        <div class="field full"><div class="section-title" style="margin-top:0;">target_xyz ranges (optional)</div></div>
+        <div class="field"><label>x min</label><input type="number" id="sw-tx-min" placeholder="" step="0.1"></div>
+        <div class="field"><label>x max</label><input type="number" id="sw-tx-max" placeholder="" step="0.1"></div>
+        <div class="field"><label>y min</label><input type="number" id="sw-ty-min" placeholder="" step="0.1"></div>
+        <div class="field"><label>y max</label><input type="number" id="sw-ty-max" placeholder="" step="0.1"></div>
+        <div class="field"><label>z min</label><input type="number" id="sw-tz-min" placeholder="" step="0.1"></div>
+        <div class="field"><label>z max</label><input type="number" id="sw-tz-max" placeholder="" step="0.1"></div>
+      </div>
+      <button id="sweep-btn" onclick="runSweep()">Run Sweep</button>
+      <div id="sweep-status" style="color: var(--muted); font-size: 0.8rem; margin-top: 0.4rem;"></div>
+      <div id="sweep-summary" class="sweep-summary">
+        <div class="sweep-label">Sweep Results</div>
+        <div id="sweep-counts" class="sweep-counts"></div>
+        <div id="sweep-gates" style="font-size: 0.8rem; color: var(--muted); margin-bottom: 0.5rem;"></div>
+        <div id="sweep-link" style="font-size: 0.8rem; margin-bottom: 0.5rem;"></div>
+        <div class="sweep-tbl">
+          <table>
+            <thead><tr><th>Run ID</th><th>Verdict</th><th>Failed gate</th><th></th></tr></thead>
+            <tbody id="sweep-runs"></tbody>
+          </table>
         </div>
       </div>
-
-      <div id="ai-explain-box" class="ai-box">
-        <div class="ai-label">AI Explanation</div>
-        <div id="ai-explain-text"></div>
-      </div>
-      <div id="result-evidence" class="pre-wrap"></div>
     </div>
-  </div>
-
-  <!-- ── Scenario Sweep ── -->
-  <div class="card">
-    <label>Scenario Sweep</label>
-    <div style="color: var(--muted); font-size: 0.75rem; margin-bottom: 0.5rem;">Generate many variants of the current YAML and run all gates. Results are deterministic by seed.</div>
-    <div class="sweep-inputs">
-      <div class="field"><label>n (variants)</label><input type="number" id="sw-n" value="20" min="1" max="500"></div>
-      <div class="field"><label>seed</label><input type="number" id="sw-seed" value="1337"></div>
-      <div class="field full"><div class="section-title" style="margin-top:0;">mass_kg range (optional)</div></div>
-      <div class="field"><label>min</label><input type="number" id="sw-mass-min" placeholder="e.g. 0.1" step="0.1"></div>
-      <div class="field"><label>max</label><input type="number" id="sw-mass-max" placeholder="e.g. 10.0" step="0.1"></div>
-      <div class="field full"><div class="section-title" style="margin-top:0;">target_xyz ranges (optional)</div></div>
-      <div class="field"><label>x min</label><input type="number" id="sw-tx-min" placeholder="" step="0.1"></div>
-      <div class="field"><label>x max</label><input type="number" id="sw-tx-max" placeholder="" step="0.1"></div>
-      <div class="field"><label>y min</label><input type="number" id="sw-ty-min" placeholder="" step="0.1"></div>
-      <div class="field"><label>y max</label><input type="number" id="sw-ty-max" placeholder="" step="0.1"></div>
-      <div class="field"><label>z min</label><input type="number" id="sw-tz-min" placeholder="" step="0.1"></div>
-      <div class="field"><label>z max</label><input type="number" id="sw-tz-max" placeholder="" step="0.1"></div>
-    </div>
-    <button id="sweep-btn" onclick="runSweep()">Run Sweep</button>
-    <div id="sweep-status" style="color: var(--muted); font-size: 0.8rem; margin-top: 0.4rem;"></div>
-    <div id="sweep-summary" class="sweep-summary">
-      <div class="sweep-label">Sweep Results</div>
-      <div id="sweep-counts" class="sweep-counts"></div>
-      <div id="sweep-gates" style="font-size: 0.8rem; color: var(--muted); margin-bottom: 0.5rem;"></div>
-      <div id="sweep-link" style="font-size: 0.8rem; margin-bottom: 0.5rem;"></div>
-      <div class="sweep-tbl">
-        <table>
-          <thead><tr><th>Run ID</th><th>Verdict</th><th>Failed gate</th><th></th></tr></thead>
-          <tbody id="sweep-runs"></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
+  </details>
 
   <!-- ── Recent runs ── -->
   <div class="card">
@@ -293,18 +353,54 @@ allowed_adjustments:
       </tbody>
     </table>
     {% else %}
-    <div class="empty">No runs yet. Paste a TaskSpec above and click Run.</div>
+    <div class="empty">No runs yet. Type a task above and click Generate + Run.</div>
     {% endif %}
   </div>
 </div>
 
 <script>
 const AI_ENABLED = {{ 'true' if ai_enabled else 'false' }};
+const AI_PROVIDER = '{{ ai_status.provider }}';
+
+// ── safe JSON parse helper ──
+async function safeJson(resp) {
+  const ct = resp.headers.get('content-type') || '';
+  if (ct.includes('application/json')) {
+    return await resp.json();
+  }
+  const text = await resp.text();
+  try { return JSON.parse(text); } catch (e) { return { detail: text }; }
+}
+
+// ── load AI model list ──
+async function loadModelList() {
+  if (!AI_ENABLED) return;
+  try {
+    const resp = await fetch('/ai/models');
+    const data = await resp.json();
+    const sel = document.getElementById('ai-model-select');
+    if (!sel) return;
+    sel.innerHTML = '';
+    (data.models || []).forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m; opt.textContent = m;
+      if (m === data.default) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    if (data.provider === 'fallback') {
+      const opt = document.createElement('option');
+      opt.value = ''; opt.textContent = 'fallback'; opt.selected = true;
+      sel.insertBefore(opt, sel.firstChild);
+    }
+  } catch (e) { /* ignore */ }
+}
+loadModelList();
 
 // ── state for fix-apply ──
 let _lastYamlBeforeRun = '';
 let _pendingFixPatch = null;
 let _fixedYaml = '';
+let _skipReload = false;
 
 // ── Demo loader ──
 async function loadDemoList() {
@@ -414,21 +510,26 @@ function buildYaml() {
   document.getElementById('yaml-input').value = y;
 }
 
-// ── AI generate ──
+// ── AI generate (standalone — called by Prompt Mode generateAndRun) ──
 async function generateSpec() {
-  const btn = document.getElementById('ai-gen-btn');
-  const prompt = document.getElementById('ai-prompt').value.trim();
-  const status = document.getElementById('ai-gen-status');
+  const btn = document.getElementById('generateRunBtn');
+  const prompt = document.getElementById('promptInput').value.trim();
+  const status = document.getElementById('prompt-status');
   if (!prompt) { status.textContent = 'Please enter a task description.'; return; }
   btn.disabled = true; btn.textContent = 'Generating...'; status.textContent = '';
+  const modelSel = document.getElementById('ai-model-select');
+  const model = modelSel && modelSel.value ? modelSel.value : undefined;
   try {
-    const resp = await fetch('/ai/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt }) });
-    const data = await resp.json();
+    const body = { prompt };
+    if (model) body.model = model;
+    const resp = await fetch('/ai/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await safeJson(resp);
     if (!resp.ok) { status.textContent = 'Error: ' + (data.detail || resp.status); return; }
     document.getElementById('yaml-input').value = data.yaml;
-    status.textContent = 'TaskSpec generated — review and click Run gates.';
+    const via = data.provider === 'fallback' ? ' (fallback)' : ' via ' + (data.model_used || '');
+    status.textContent = 'TaskSpec generated' + via + ' — review and click Run gates.';
   } catch (e) { status.textContent = 'Network error: ' + e.message; }
-  finally { btn.disabled = false; btn.textContent = 'Generate TaskSpec'; }
+  finally { btn.disabled = false; btn.textContent = 'Generate + Run'; }
 }
 
 // ── AI explain ──
@@ -438,10 +539,19 @@ async function fetchExplanation(evidence) {
   box.className = 'ai-box'; text.textContent = '';
   if (!AI_ENABLED) return;
   box.className = 'ai-box show'; text.textContent = 'Thinking...';
+  const modelSel = document.getElementById('ai-model-select');
+  const model = modelSel && modelSel.value ? modelSel.value : undefined;
   try {
-    const resp = await fetch('/ai/explain', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ evidence }) });
-    const data = await resp.json();
-    text.textContent = resp.ok ? data.explanation : 'Could not get explanation.';
+    const body = { evidence };
+    if (model) body.model = model;
+    const resp = await fetch('/ai/explain', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await safeJson(resp);
+    if (resp.ok) {
+      const via = data.provider === 'fallback' ? ' [fallback]' : '';
+      text.textContent = data.explanation + via;
+    } else {
+      text.textContent = 'Error: ' + (data.detail || resp.status);
+    }
   } catch (e) { text.textContent = 'Could not get explanation.'; }
 }
 
@@ -515,6 +625,36 @@ function toggleDiff() {
   el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
+// ── Summary cards (regex-based YAML parsing) ──
+function showSummaryCards(yamlText) {
+  try {
+    const conIdMatch = yamlText.match(/constructor:\s*\n\s*id:\s*(\S+)/);
+    const reachMatch = yamlText.match(/max_reach_m:\s*([\d.]+)/);
+    const payloadMatch = yamlText.match(/max_payload_kg:\s*([\d.]+)/);
+    document.getElementById('card-robot-name').textContent = conIdMatch ? conIdMatch[1] : '?';
+    document.getElementById('card-robot-detail').textContent =
+      (reachMatch ? 'reach: ' + reachMatch[1] + 'm' : '') +
+      (payloadMatch ? '  payload: ' + payloadMatch[1] + 'kg' : '');
+
+    const subIdMatch = yamlText.match(/substrate:\s*\n\s*id:\s*(\S+)/);
+    const massMatch = yamlText.match(/mass_kg:\s*([\d.]+)/);
+    document.getElementById('card-object-name').textContent = subIdMatch ? subIdMatch[1] : '?';
+    document.getElementById('card-object-detail').textContent = massMatch ? 'mass: ' + massMatch[1] + ' kg' : '';
+
+    const keepoutSection = yamlText.match(/keepout_zones:\s*\n([\s\S]*?)(?:\n\S|\n*$)/);
+    const zoneCount = keepoutSection ? (keepoutSection[1].match(/- id:/g) || []).length : 0;
+    const bufferMatch = yamlText.match(/safety_buffer:\s*([\d.]+)/);
+    document.getElementById('card-world-name').textContent =
+      zoneCount > 0 ? zoneCount + ' keepout zone' + (zoneCount > 1 ? 's' : '') : 'No keepout zones';
+    document.getElementById('card-world-detail').textContent =
+      bufferMatch ? 'safety buffer: ' + bufferMatch[1] + 'm' : 'default buffer';
+
+    document.getElementById('summary-cards').style.display = 'block';
+  } catch (e) {
+    document.getElementById('summary-cards').style.display = 'none';
+  }
+}
+
 // ── Submit run ──
 async function submitRun() {
   const btn = document.getElementById('run-btn');
@@ -547,7 +687,7 @@ async function submitRun() {
 
   try {
     const resp = await fetch('/runs', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: yamlText });
-    const data = await resp.json();
+    const data = await safeJson(resp);
 
     if (!resp.ok) {
       result.className = 'result show err';
@@ -556,6 +696,9 @@ async function submitRun() {
       evidence.textContent = '';
       return;
     }
+
+    // Show summary cards for the YAML that was run
+    showSummaryCards(yamlText);
 
     const isCan = data.verdict === 'CAN';
     result.className = 'result show ' + (isCan ? 'can' : 'cant');
@@ -596,13 +739,60 @@ async function submitRun() {
     // ── AI explain ──
     if (!isCan && AI_ENABLED) { fetchExplanation(data.evidence); }
 
-    // Reload after delay to refresh runs table.
-    setTimeout(() => location.reload(), 2000);
+    // Reload after delay to refresh runs table (skip when called from generateAndRun).
+    if (!_skipReload) { setTimeout(() => location.reload(), 2000); }
+    _skipReload = false;
   } catch (e) {
     result.className = 'result show err';
     verdict.className = 'verdict cant'; verdict.textContent = 'Network error';
     detail.textContent = e.message; evidence.textContent = '';
   } finally { btn.disabled = false; btn.textContent = 'Run gates'; }
+}
+
+// ── Generate + Run (Prompt Mode) ──
+async function generateAndRun() {
+  const btn = document.getElementById('generateRunBtn');
+  const prompt = document.getElementById('promptInput').value.trim();
+  const status = document.getElementById('prompt-status');
+  if (!prompt) { status.textContent = 'Please enter a task description.'; return; }
+
+  btn.disabled = true; btn.textContent = 'Generating...'; status.textContent = '';
+
+  const modelSel = document.getElementById('ai-model-select');
+  const model = modelSel && modelSel.value ? modelSel.value : undefined;
+
+  try {
+    // Step 1: Generate YAML
+    const body = { prompt };
+    if (model) body.model = model;
+    const genResp = await fetch('/ai/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const genData = await safeJson(genResp);
+    if (!genResp.ok) {
+      status.textContent = 'Error: ' + (genData.detail || genResp.status);
+      return;
+    }
+
+    // Step 2: Set YAML editor + show summary cards
+    document.getElementById('yaml-input').value = genData.yaml;
+    showSummaryCards(genData.yaml);
+    const via = genData.provider === 'fallback' ? ' (fallback)' : ' via ' + (genData.model_used || '');
+    status.textContent = 'Generated' + via + ' — running gates...';
+
+    // Step 3: Run gates (skip auto-reload)
+    btn.textContent = 'Running gates...';
+    _skipReload = true;
+    await submitRun();
+
+    status.textContent = 'Done' + via + '.';
+  } catch (e) {
+    status.textContent = 'Network error: ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Generate + Run';
+  }
 }
 
 // ── Sweep ──
@@ -643,7 +833,7 @@ async function runSweep() {
         seed: parseInt(document.getElementById('sw-seed').value) || 1337,
       }),
     });
-    const data = await resp.json();
+    const data = await safeJson(resp);
     if (!resp.ok) {
       status.textContent = 'Error: ' + (data.detail || resp.status);
       return;
@@ -681,6 +871,14 @@ async function runSweep() {
     btn.disabled = false; btn.textContent = 'Run Sweep';
   }
 }
+
+// ── Keyboard shortcut: Ctrl+Enter in prompt textarea ──
+document.getElementById('promptInput')?.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    generateAndRun();
+  }
+});
 </script>
 </body>
 </html>

@@ -61,8 +61,13 @@ def health() -> dict:
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request) -> HTMLResponse:
     runs = store.list_recent(limit=50)
+    ai_status = ai.get_status()
     return templates.TemplateResponse(
-        request, "index.html", {"runs": runs, "ai_enabled": ai.is_available()},
+        request, "index.html", {
+            "runs": runs,
+            "ai_enabled": ai_status["ai_enabled"],
+            "ai_status": ai_status,
+        },
     )
 
 
@@ -342,19 +347,29 @@ def get_sweep(sweep_id: str) -> JSONResponse:
 
 def _require_ai() -> None:
     if not ai.is_available():
+        provider = ai.get_provider()
+        if provider == "openai":
+            key_name = "AXIOM_OPENAI_API_KEY"
+        else:
+            key_name = "GOOGLE_API_KEY"
         raise HTTPException(
             status_code=503,
-            detail="GOOGLE_API_KEY is not set — AI features are unavailable.",
+            detail=f"{key_name} is not set — AI features are unavailable.",
         )
 
 
 @app.get("/ai/status")
-def ai_status() -> dict:
-    enabled = ai.is_available()
-    result: dict = {"ai_enabled": enabled}
-    if not enabled:
-        result["reason"] = "GOOGLE_API_KEY is not set"
-    return result
+def ai_status_endpoint() -> JSONResponse:
+    return JSONResponse(content=ai.get_status())
+
+
+@app.get("/ai/models")
+def ai_models() -> JSONResponse:
+    return JSONResponse(content={
+        "models": ai.get_models_allowlist(),
+        "default": ai.get_default_model(),
+        "provider": ai.get_status()["provider"],
+    })
 
 
 @app.post("/ai/generate")
@@ -364,8 +379,9 @@ async def ai_generate(request: Request) -> JSONResponse:
     prompt = body.get("prompt", "")
     if not prompt:
         raise HTTPException(status_code=400, detail="prompt is required")
-    yaml_text = ai.generate_taskspec(prompt)
-    return JSONResponse(content={"yaml": yaml_text})
+    model = ai.validate_model(body.get("model"))
+    result = ai.generate_taskspec(prompt, model=model)
+    return JSONResponse(content=result)
 
 
 @app.post("/ai/explain")
@@ -375,5 +391,6 @@ async def ai_explain(request: Request) -> JSONResponse:
     evidence = body.get("evidence")
     if not evidence:
         raise HTTPException(status_code=400, detail="evidence is required")
-    explanation = ai.explain_evidence(evidence)
-    return JSONResponse(content={"explanation": explanation})
+    model = ai.validate_model(body.get("model"))
+    result = ai.explain_evidence(evidence, model=model)
+    return JSONResponse(content=result)

@@ -78,14 +78,30 @@ Runs all four example YAMLs, prints a summary table, and writes evidence JSON fo
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GOOGLE_API_KEY` | No | Gemini API key. Enables the AI Assistant panel in the web UI. |
-| `AXIOM_PUBLIC_BASE_URL` | No | When set, `evidence_url` in API responses becomes an absolute URL (e.g. `https://axiom.example.com`). |
+| `GOOGLE_API_KEY` | No | Gemini API key. Enables the AI Assistant panel (when provider is `gemini`). |
+| `AXIOM_PUBLIC_BASE_URL` | No | Makes `evidence_url` in API responses absolute (e.g. `https://axiom.example.com`). |
+| `AXIOM_AI_PROVIDER` | No | `"gemini"` (default), `"openai"` (Groq/Together/OpenRouter), or `"none"`. |
+| `AXIOM_GEMINI_MODEL_DEFAULT` | No | Default Gemini model (default: `gemini-2.0-flash`). |
+| `AXIOM_GEMINI_MODELS_ALLOWLIST` | No | Comma-separated Gemini model allowlist. |
+| `AXIOM_OPENAI_BASE_URL` | No | OpenAI-compatible API base URL (default: `https://api.groq.com/openai/v1`). |
+| `AXIOM_OPENAI_API_KEY` | No | API key for the OpenAI-compatible provider (e.g. Groq API key). |
+| `AXIOM_OPENAI_MODEL_DEFAULT` | No | Default model for the OpenAI provider (default: `llama-3.3-70b-versatile`). |
+| `AXIOM_OPENAI_MODELS_ALLOWLIST` | No | Comma-separated model allowlist for the OpenAI provider. |
+| `AXIOM_AI_DEMO_FALLBACK` | No | `"true"` for demo-proof mode: local fallback when the upstream provider is unavailable or hits quota. |
 
 Copy the example file and fill in your values:
 
 ```bash
 cp .env.example .env
-# edit .env with your API key
+# edit .env — for a demo-proof setup, just set AXIOM_AI_DEMO_FALLBACK=true
+```
+
+**Using Groq (free):** Get a free API key at [console.groq.com](https://console.groq.com), then:
+
+```bash
+AXIOM_AI_PROVIDER=openai
+AXIOM_OPENAI_API_KEY=gsk_...        # your Groq key
+# base URL defaults to Groq; override for Together, OpenRouter, etc.
 ```
 
 ### Run locally
@@ -105,10 +121,19 @@ docker compose up -d --build
 # open http://localhost:8000
 ```
 
-### Demo flow
+### Judge demo flow
+
+1. Open `http://localhost:8000`.
+2. Type a task in the prompt box, e.g. "Pick a 2kg box from [1,0,1] to [2,1,0.5] with a UR5e".
+3. Click **Generate + Run** (or Ctrl+Enter).
+4. See verdict, summary cards, and counterfactual fix.
+5. Click **Apply fix to YAML**, then **Run gates** again to confirm `CAN`.
+6. Expand **Inspect YAML / Advanced** for raw YAML, Task Builder, or Sweep.
+
+### Manual demo flow
 
 1. Open `http://localhost:8000` in your browser.
-2. Paste a TaskSpec YAML into the text area (a sample is pre-filled).
+2. Expand **Inspect YAML / Advanced**, paste a TaskSpec YAML (a sample is pre-filled).
 3. Click **Run gates**.
 4. See the verdict (`CAN` / `HARD_CANT`), failed gate, top fix, and full evidence JSON.
 5. The **Recent runs** table below updates with every run — click **evidence** to view the raw JSON.
@@ -124,9 +149,10 @@ docker compose up -d --build
 | `GET` | `/runs/{run_id}/evidence` | Download the evidence.json file |
 | `GET` | `/examples` | List bundled example YAML filenames |
 | `GET` | `/examples/{name}` | Get raw YAML text for a bundled example |
-| `GET` | `/ai/status` | AI feature status — `{"ai_enabled": true/false}` |
-| `POST` | `/ai/generate` | Generate a TaskSpec YAML from a natural-language prompt (requires `GOOGLE_API_KEY`) |
-| `POST` | `/ai/explain` | Get a 1-sentence explanation of an EvidencePacket (requires `GOOGLE_API_KEY`) |
+| `GET` | `/ai/status` | AI status — provider, model, fallback state |
+| `GET` | `/ai/models` | List allowed models + default + current provider |
+| `POST` | `/ai/generate` | Generate a TaskSpec YAML from a natural-language prompt (requires an AI provider key or fallback) |
+| `POST` | `/ai/explain` | Get a 1-sentence explanation of an EvidencePacket (requires an AI provider key or fallback) |
 | `POST` | `/sweeps` | Run a Scenario Sweep — generate variants and run all gates (see below) |
 | `GET` | `/sweeps/{sweep_id}` | Get saved sweep summary + run IDs |
 | `GET` | `/` | Web UI |
