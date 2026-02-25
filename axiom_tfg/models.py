@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import math
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ── Enums ──────────────────────────────────────────────────────────────────
@@ -42,9 +43,41 @@ class SubstrateSpec(BaseModel):
     initial_pose: XYZ
 
 
+def _rpy_to_quat(roll: float, pitch: float, yaw: float) -> list[float]:
+    """Convert roll/pitch/yaw (radians) to quaternion [w, x, y, z]."""
+    cr, sr = math.cos(roll / 2), math.sin(roll / 2)
+    cp, sp = math.cos(pitch / 2), math.sin(pitch / 2)
+    cy, sy = math.cos(yaw / 2), math.sin(yaw / 2)
+    return [
+        cr * cp * cy + sr * sp * sy,
+        sr * cp * cy - cr * sp * sy,
+        cr * sp * cy + sr * cp * sy,
+        cr * cp * sy - sr * sp * cy,
+    ]
+
+
 class TransformationSpec(BaseModel):
     target_pose: XYZ
     tolerance_m: float = Field(gt=0)
+    target_quat_wxyz: list[float] | None = Field(
+        default=None, min_length=4, max_length=4,
+    )
+    target_rpy_rad: list[float] | None = Field(
+        default=None, min_length=3, max_length=3,
+    )
+    orientation_tolerance_rad: float | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def _normalise_orientation(self) -> "TransformationSpec":
+        """Normalise orientation: quaternion wins over RPY; RPY is converted."""
+        if self.target_quat_wxyz is not None:
+            # Normalise the quaternion to unit length.
+            n = math.sqrt(sum(c * c for c in self.target_quat_wxyz))
+            if n > 0:
+                self.target_quat_wxyz = [c / n for c in self.target_quat_wxyz]
+        elif self.target_rpy_rad is not None:
+            self.target_quat_wxyz = _rpy_to_quat(*self.target_rpy_rad)
+        return self
 
 
 class ConstructorSpec(BaseModel):
@@ -52,6 +85,9 @@ class ConstructorSpec(BaseModel):
     base_pose: XYZ
     max_reach_m: float = Field(gt=0)
     max_payload_kg: float = Field(gt=0)
+    urdf_path: str | None = None
+    base_link: str | None = None
+    ee_link: str | None = None
 
 
 class AllowedAdjustments(BaseModel):

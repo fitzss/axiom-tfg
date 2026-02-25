@@ -11,7 +11,72 @@ Designed to run as a CI gate — exit code 0 means feasible, exit code 1 means n
 
 Ships with a **web UI + REST API** (FastAPI) and a **Docker Compose** setup for one-command deployment on any VM (see [VULTR_DEPLOY.md](VULTR_DEPLOY.md)).
 
-## Install
+## Getting started in 5 minutes
+
+```bash
+# 1. Install
+pip install axiom-tfg
+
+# 2. Scaffold a project
+axiom init my-robot-project
+cd my-robot-project
+
+# 3. Run a feasibility check
+axiom run tasks/pick_place_can.yaml --out artifacts/demo --junit
+# VERDICT=CAN gate=- reason=- out=artifacts/demo
+
+# 4. Run regression replay
+axiom replay regressions/ --out artifacts/replay
+# REPLAY total=3 passed=3 failed=0 out=artifacts/replay
+
+# 5. Try the Makefile
+make axiom-demo
+make axiom-ci
+```
+
+That's it. You now have:
+- `tasks/` — TaskSpec YAMLs defining robot tasks
+- `regressions/` — artifact bundles for regression replay
+- `.github/workflows/axiom.yml` — CI that runs `axiom replay` on every push
+- `Makefile` — convenience targets
+
+## Use as a Python library
+
+```python
+from axiom_tfg import check_simple
+import math
+
+# Quick position-only check (uses bundled UR5e URDF automatically)
+result = check_simple(target_xyz=[0.4, 0.2, 0.5], mass_kg=0.35)
+print(result.verdict)  # "CAN"
+
+# 6-DOF check: position + orientation (top-down grasp)
+result = check_simple(
+    target_xyz=[0.4, 0.2, 0.5],
+    target_rpy_rad=[0.0, math.pi, 0.0],  # EE pointing down
+    mass_kg=2.0,
+)
+print(result.verdict)          # "CAN"
+print(result.failed_gate)      # None
+
+# Infeasible task — get the counterfactual fix
+result = check_simple(target_xyz=[5.0, 5.0, 5.0])
+print(result.verdict)           # "HARD_CANT"
+print(result.reason_code)       # "NO_IK_SOLUTION"
+print(result.top_fix_instruction)  # "No IK solution: ... Move target to ..."
+```
+
+For full control, use `check()` with a `TaskSpec`:
+
+```python
+from axiom_tfg import check
+from axiom_tfg.models import TaskSpec
+
+spec = TaskSpec.model_validate(your_yaml_dict)
+result = check(spec)
+```
+
+## Install (from source)
 
 Requires Python 3.11+.
 
@@ -71,6 +136,34 @@ tfg demo --out runs/
 ```
 
 Runs all four example YAMLs, prints a summary table, and writes evidence JSON for each.
+
+### `axiom` CLI — CI-friendly commands
+
+The `axiom` entry-point provides `init`, `run`, `sweep`, and `replay` with artifact bundles and JUnit output for CI integration.
+
+### `axiom init` — scaffold a project
+
+```bash
+axiom init                    # scaffold in current directory
+axiom init my-project         # scaffold in a new directory
+axiom init my-project --force # overwrite existing files
+```
+
+Creates: `axiom_profiles/`, `tasks/` (3 examples), `regressions/` (pre-built artifact bundles), `.github/workflows/axiom.yml`, and a `Makefile`.
+
+```bash
+# Single run with JUnit output
+axiom run examples/pick_place_can.yaml --junit --out artifacts/bundle1
+
+# Deterministic parameter sweep (junit.xml written by default)
+axiom sweep examples/pick_place_can.yaml --n 50 --seed 1337 \
+  --mass-min 0.1 --mass-max 10.0 --out artifacts/sweep1
+
+# Regression replay (junit.xml written by default; use --no-junit to skip)
+axiom replay artifacts/ --out artifacts/replay1
+```
+
+All three commands exit 0 on success and 2 on failure (HARD_CANT or regression mismatch). The `--junit/--no-junit` flag controls JUnit XML generation on `sweep` and `replay` (default: on); `run` uses `--junit` (default: off).
 
 ## Web UI + API server
 
@@ -170,9 +263,65 @@ Gates run in order; the first failure short-circuits.
 
 | Gate | Checks | Reason code |
 |------|--------|-------------|
-| **reachability** | Euclidean distance from `constructor.base_pose` to `transformation.target_pose` <= `max_reach_m` | `OUT_OF_REACH` |
+| **ik_feasibility** | URDF-based inverse kinematics — does a joint solution exist for the target pose? (requires `constructor.urdf_path`) | `NO_IK_SOLUTION` |
+| **reachability** | Euclidean distance from `constructor.base_pose` to `transformation.target_pose` <= `max_reach_m` (fallback when no URDF) | `OUT_OF_REACH` |
 | **payload** | `substrate.mass_kg` <= `constructor.max_payload_kg` | `OVER_PAYLOAD` |
 | **keepout** | `transformation.target_pose` must not lie inside any `environment.keepout_zones` AABB (expanded by `safety_buffer`) | `IN_KEEP_OUT_ZONE` |
+
+### IK feasibility gate (URDF-based reachability)
+
+When `constructor.urdf_path` is set, Axiom loads the URDF with [ikpy](https://github.com/Phylliade/ikpy), solves inverse kinematics for the target pose, and checks whether the solution is within tolerance. This replaces the simpler spherical reachability check.
+
+**6-DOF oriented IK:** When `transformation.target_rpy_rad` or `target_quat_wxyz` is provided, the gate checks both position AND orientation feasibility. The solver verifies the end-effector can reach the target point in the required approach direction (e.g. top-down grasp, side insertion).
+
+**Multi-start:** To reduce false negatives from local-optimiser traps, the gate runs 6 deterministic initial seeds spaced across the joint range and keeps the best solution. All seeds are deterministic — same inputs always produce the same evidence.
+
+If the IK gate passes, the spherical reachability gate is skipped (IK subsumes it). If no URDF is provided, the spherical check runs as the fallback — all existing TaskSpecs work unchanged.
+
+**Constructor fields for IK:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `urdf_path` | string | No | Path to a URDF file describing the robot |
+| `base_link` | string | No | Name of the base link in the URDF |
+| `ee_link` | string | No | Name of the end-effector link |
+
+**Orientation fields** (on `transformation`):
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `target_rpy_rad` | [r,p,y] | No | Target orientation as roll/pitch/yaw in radians |
+| `target_quat_wxyz` | [w,x,y,z] | No | Target orientation as unit quaternion (takes precedence over RPY) |
+| `orientation_tolerance_rad` | float | No | Angular tolerance in radians (default ~10°) |
+
+**Reason codes:**
+
+| Code | Meaning |
+|------|---------|
+| `NO_IK_SOLUTION` | No joint configuration reaches the target position (and orientation if specified) |
+| `ORIENTATION_MISMATCH` | Position is reachable but the required orientation cannot be achieved |
+
+**Evidence output** includes `solver`, `ik_success`, `attempts`, `best_position_error_m`, `best_orientation_error_rad` (when orientation specified), `fk_result_xyz`, `fk_quat_wxyz`, and `joint_solution` (when solved).
+
+Example TaskSpec with oriented IK:
+
+```yaml
+transformation:
+  target_pose:
+    xyz: [1.2, 0.3, 0.8]
+  tolerance_m: 0.01
+  target_rpy_rad: [0.0, 3.1416, 0.0]  # EE pointing down
+
+constructor:
+  id: ur5e
+  base_pose:
+    xyz: [0.0, 0.0, 0.0]
+  max_reach_m: 1.85
+  max_payload_kg: 5.0
+  urdf_path: robots/ur5e.urdf
+  base_link: base_link
+  ee_link: ee_link
+```
 
 ## Counterfactual fixes
 
@@ -202,6 +351,9 @@ transformation:
   target_pose:
     xyz: [1.2, 0.3, 0.8]
   tolerance_m: 0.01
+  target_rpy_rad: [0.0, 3.1416, 0.0]   # optional — roll/pitch/yaw (radians)
+  # target_quat_wxyz: [0, 0, 1, 0]     # alternative — quaternion [w,x,y,z]
+  # orientation_tolerance_rad: 0.1745   # optional — default ~10°
 
 constructor:
   id: ur5e
@@ -209,6 +361,9 @@ constructor:
     xyz: [0.0, 0.0, 0.0]
   max_reach_m: 1.85
   max_payload_kg: 5.0
+  urdf_path: robots/ur5e.urdf         # optional — enables IK gate
+  base_link: base_link                # optional — URDF base link name
+  ee_link: ee_link                    # optional — URDF end-effector link name
 
 environment:                          # optional
   safety_buffer: 0.02                  # metres, default 0.02

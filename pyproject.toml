@@ -20,6 +20,8 @@ dependencies = [
     "python-multipart>=0.0.9",
     "google-generativeai>=0.7,<1",
     "openai>=1.0,<2",
+    "ikpy>=3.3,<4",
+    "numpy>=1.24",
 ]
 
 [project.optional-dependencies]
@@ -30,9 +32,10 @@ dev = [
 
 [project.scripts]
 tfg = "axiom_tfg.cli:app"
+axiom = "axiom_cli.app:app"
 
 [tool.setuptools.packages.find]
-include = ["axiom_tfg*", "axiom_server*"]
+include = ["axiom_tfg*", "axiom_server*", "axiom_cli*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
