@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Simplified Franka Emika Panda URDF for deterministic IK feasibility checks.
+     Link lengths match the real Panda DH parameters. -->
+<robot name="panda">
+
+  <link name="panda_link0">
+    <visual><geometry><cylinder length="0.01" radius="0.05"/></geometry></visual>
+  </link>
+
+  <!-- Joint 1 (Z-axis) -->
+  <joint name="panda_joint1" type="revolute">
+    <origin xyz="0 0 0.333" rpy="0 0 0"/>
+    <parent link="panda_link0"/>
+    <child link="panda_link1"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.8973" upper="2.8973" effort="87" velocity="2.175"/>
+  </joint>
+  <link name="panda_link1">
+    <visual><geometry><cylinder length="0.333" radius="0.04"/></geometry></visual>
+  </link>
+
+  <!-- Joint 2 (Y-axis) -->
+  <joint name="panda_joint2" type="revolute">
+    <origin xyz="0 0 0" rpy="-1.5708 0 0"/>
+    <parent link="panda_link1"/>
+    <child link="panda_link2"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-1.7628" upper="1.7628" effort="87" velocity="2.175"/>
+  </joint>
+  <link name="panda_link2">
+    <visual><geometry><cylinder length="0.01" radius="0.04"/></geometry></visual>
+  </link>
+
+  <!-- Joint 3 (Z-axis) -->
+  <joint name="panda_joint3" type="revolute">
+    <origin xyz="0 -0.316 0" rpy="1.5708 0 0"/>
+    <parent link="panda_link2"/>
+    <child link="panda_link3"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.8973" upper="2.8973" effort="87" velocity="2.175"/>
+  </joint>
+  <link name="panda_link3">
+    <visual><geometry><cylinder length="0.316" radius="0.035"/></geometry></visual>
+  </link>
+
+  <!-- Joint 4 (Z-axis, rotated) -->
+  <joint name="panda_joint4" type="revolute">
+    <origin xyz="0.0825 0 0" rpy="1.5708 0 0"/>
+    <parent link="panda_link3"/>
+    <child link="panda_link4"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.0718" upper="-0.0698" effort="87" velocity="2.175"/>
+  </joint>
+  <link name="panda_link4">
+    <visual><geometry><cylinder length="0.01" radius="0.035"/></geometry></visual>
+  </link>
+
+  <!-- Joint 5 (Z-axis) -->
+  <joint name="panda_joint5" type="revolute">
+    <origin xyz="-0.0825 0.384 0" rpy="-1.5708 0 0"/>
+    <parent link="panda_link4"/>
+    <child link="panda_link5"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.8973" upper="2.8973" effort="12" velocity="2.61"/>
+  </joint>
+  <link name="panda_link5">
+    <visual><geometry><cylinder length="0.384" radius="0.03"/></geometry></visual>
+  </link>
+
+  <!-- Joint 6 (Z-axis, rotated) -->
+  <joint name="panda_joint6" type="revolute">
+    <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+    <parent link="panda_link5"/>
+    <child link="panda_link6"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-0.0175" upper="3.7525" effort="12" velocity="2.61"/>
+  </joint>
+  <link name="panda_link6">
+    <visual><geometry><cylinder length="0.01" radius="0.03"/></geometry></visual>
+  </link>
+
+  <!-- Joint 7 (Z-axis) -->
+  <joint name="panda_joint7" type="revolute">
+    <origin xyz="0.088 0 0" rpy="1.5708 0 0"/>
+    <parent link="panda_link6"/>
+    <child link="panda_link7"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.8973" upper="2.8973" effort="12" velocity="2.61"/>
+  </joint>
+  <link name="panda_link7">
+    <visual><geometry><cylinder length="0.01" radius="0.025"/></geometry></visual>
+  </link>
+
+  <!-- Flange (fixed) -->
+  <joint name="panda_joint8" type="fixed">
+    <origin xyz="0 0 0.107" rpy="0 0 0"/>
+    <parent link="panda_link7"/>
+    <child link="panda_link8"/>
+  </joint>
+  <link name="panda_link8">
+    <visual><geometry><sphere radius="0.01"/></geometry></visual>
+  </link>
+
+</robot>

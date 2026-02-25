@@ -85,12 +85,25 @@ def _generate_seeds(chain, k: int = _MULTI_START_K) -> list:
     """Generate K deterministic initial joint configurations.
 
     Seeds are spaced across the joint range so the local optimiser starts
-    from different basins.  Seed 0 is always zeros (home pose).
+    from different basins.  Seed 0 is the midpoint of each joint's range
+    (clamped so it's always valid even for joints that don't span zero).
     """
     import numpy as np
 
     n = len(chain.links)
-    seeds: list = [np.zeros(n)]
+
+    # Seed 0: midpoint of each joint range (safe for asymmetric bounds).
+    q0 = np.zeros(n)
+    for j, (link, active) in enumerate(
+        zip(chain.links, chain.active_links_mask)
+    ):
+        if not active:
+            continue
+        lo, hi = link.bounds
+        if math.isinf(lo) or math.isinf(hi):
+            lo, hi = -math.pi, math.pi
+        q0[j] = (lo + hi) / 2
+    seeds: list = [q0]
 
     for i in range(1, k):
         q = np.zeros(n)

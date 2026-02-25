@@ -57,6 +57,8 @@ def validate_action(
     *,
     robot: str = "ur5e",
     urdf_path: str | None = None,
+    base_link: str | None = None,
+    ee_link: str | None = None,
     base_xyz: list[float] | None = None,
     max_reach_m: float = 1.85,
     max_payload_kg: float = 5.0,
@@ -74,7 +76,7 @@ def validate_action(
     All other gate parameters (robot, keepout zones, etc.) are passed
     through as keyword arguments.
     """
-    result = check_simple(
+    check_kwargs: dict[str, Any] = dict(
         target_xyz=action["target_xyz"],
         target_rpy_rad=action.get("target_rpy_rad"),
         target_quat_wxyz=action.get("target_quat_wxyz"),
@@ -86,6 +88,12 @@ def validate_action(
         max_payload_kg=max_payload_kg,
         keepout_zones=keepout_zones,
     )
+    if base_link is not None:
+        check_kwargs["base_link"] = base_link
+    if ee_link is not None:
+        check_kwargs["ee_link"] = ee_link
+
+    result = check_simple(**check_kwargs)
 
     return ActionResult(
         allowed=result.verdict == "CAN",
@@ -102,6 +110,8 @@ def validate_plan(
     *,
     robot: str = "ur5e",
     urdf_path: str | None = None,
+    base_link: str | None = None,
+    ee_link: str | None = None,
     base_xyz: list[float] | None = None,
     max_reach_m: float = 1.85,
     max_payload_kg: float = 5.0,
@@ -117,6 +127,8 @@ def validate_plan(
     robot_kwargs: dict[str, Any] = dict(
         robot=robot,
         urdf_path=urdf_path,
+        base_link=base_link,
+        ee_link=ee_link,
         base_xyz=base_xyz,
         max_reach_m=max_reach_m,
         max_payload_kg=max_payload_kg,

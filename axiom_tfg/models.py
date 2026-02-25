@@ -66,6 +66,7 @@ class TransformationSpec(BaseModel):
         default=None, min_length=3, max_length=3,
     )
     orientation_tolerance_rad: float | None = Field(default=None, gt=0)
+    waypoints: list[XYZ] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _normalise_orientation(self) -> "TransformationSpec":

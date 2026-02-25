@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Simplified KUKA LBR iiwa 14 R820 URDF for deterministic IK feasibility checks.
+     Link lengths match the real iiwa 14 DH parameters. -->
+<robot name="kuka_iiwa14">
+
+  <link name="iiwa_link_0">
+    <visual><geometry><cylinder length="0.01" radius="0.06"/></geometry></visual>
+  </link>
+
+  <!-- Joint 1 (Z-axis) -->
+  <joint name="iiwa_joint_1" type="revolute">
+    <origin xyz="0 0 0.1575" rpy="0 0 0"/>
+    <parent link="iiwa_link_0"/>
+    <child link="iiwa_link_1"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.9671" upper="2.9671" effort="320" velocity="1.4835"/>
+  </joint>
+  <link name="iiwa_link_1">
+    <visual><geometry><cylinder length="0.1575" radius="0.045"/></geometry></visual>
+  </link>
+
+  <!-- Joint 2 (Y-axis via rotation) -->
+  <joint name="iiwa_joint_2" type="revolute">
+    <origin xyz="0 0 0.2025" rpy="1.5708 0 0"/>
+    <parent link="iiwa_link_1"/>
+    <child link="iiwa_link_2"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.0944" upper="2.0944" effort="320" velocity="1.4835"/>
+  </joint>
+  <link name="iiwa_link_2">
+    <visual><geometry><cylinder length="0.2025" radius="0.04"/></geometry></visual>
+  </link>
+
+  <!-- Joint 3 (Z-axis) -->
+  <joint name="iiwa_joint_3" type="revolute">
+    <origin xyz="0 0.2045 0" rpy="-1.5708 0 0"/>
+    <parent link="iiwa_link_2"/>
+    <child link="iiwa_link_3"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.9671" upper="2.9671" effort="176" velocity="1.7453"/>
+  </joint>
+  <link name="iiwa_link_3">
+    <visual><geometry><cylinder length="0.2045" radius="0.035"/></geometry></visual>
+  </link>
+
+  <!-- Joint 4 (Y-axis via rotation) -->
+  <joint name="iiwa_joint_4" type="revolute">
+    <origin xyz="0 0 0.2155" rpy="1.5708 0 0"/>
+    <parent link="iiwa_link_3"/>
+    <child link="iiwa_link_4"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.0944" upper="2.0944" effort="176" velocity="1.3090"/>
+  </joint>
+  <link name="iiwa_link_4">
+    <visual><geometry><cylinder length="0.2155" radius="0.035"/></geometry></visual>
+  </link>
+
+  <!-- Joint 5 (Z-axis) -->
+  <joint name="iiwa_joint_5" type="revolute">
+    <origin xyz="0 0.1845 0" rpy="-1.5708 0 0"/>
+    <parent link="iiwa_link_4"/>
+    <child link="iiwa_link_5"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.9671" upper="2.9671" effort="110" velocity="2.2689"/>
+  </joint>
+  <link name="iiwa_link_5">
+    <visual><geometry><cylinder length="0.1845" radius="0.03"/></geometry></visual>
+  </link>
+
+  <!-- Joint 6 (Y-axis via rotation) -->
+  <joint name="iiwa_joint_6" type="revolute">
+    <origin xyz="0 0 0.2155" rpy="1.5708 0 0"/>
+    <parent link="iiwa_link_5"/>
+    <child link="iiwa_link_6"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.0944" upper="2.0944" effort="40" velocity="2.3562"/>
+  </joint>
+  <link name="iiwa_link_6">
+    <visual><geometry><cylinder length="0.2155" radius="0.025"/></geometry></visual>
+  </link>
+
+  <!-- Joint 7 (Z-axis) -->
+  <joint name="iiwa_joint_7" type="revolute">
+    <origin xyz="0 0.081 0" rpy="-1.5708 0 0"/>
+    <parent link="iiwa_link_6"/>
+    <child link="iiwa_link_7"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.0543" upper="3.0543" effort="40" velocity="2.3562"/>
+  </joint>
+  <link name="iiwa_link_7">
+    <visual><geometry><sphere radius="0.01"/></geometry></visual>
+  </link>
+
+</robot>

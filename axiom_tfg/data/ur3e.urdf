@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Simplified UR3e URDF for deterministic IK feasibility checks.
+     Link lengths match the real UR3e DH parameters. -->
+<robot name="ur3e">
+
+  <link name="base_link">
+    <visual><geometry><cylinder length="0.01" radius="0.04"/></geometry></visual>
+  </link>
+
+  <!-- Shoulder pan (Z-axis) -->
+  <joint name="shoulder_pan_joint" type="revolute">
+    <origin xyz="0 0 0.15185" rpy="0 0 0"/>
+    <parent link="base_link"/>
+    <child link="shoulder_link"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-6.2832" upper="6.2832" effort="56" velocity="3.14"/>
+  </joint>
+  <link name="shoulder_link">
+    <visual><geometry><cylinder length="0.15185" radius="0.035"/></geometry></visual>
+  </link>
+
+  <!-- Shoulder lift (Y-axis) -->
+  <joint name="shoulder_lift_joint" type="revolute">
+    <origin xyz="0 0 0" rpy="0 1.5708 0"/>
+    <parent link="shoulder_link"/>
+    <child link="upper_arm_link"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-6.2832" upper="6.2832" effort="56" velocity="3.14"/>
+  </joint>
+  <link name="upper_arm_link">
+    <visual><geometry><cylinder length="0.24355" radius="0.03"/></geometry></visual>
+  </link>
+
+  <!-- Elbow (Y-axis) -->
+  <joint name="elbow_joint" type="revolute">
+    <origin xyz="-0.24355 0 0" rpy="0 0 0"/>
+    <parent link="upper_arm_link"/>
+    <child link="forearm_link"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-3.1416" upper="3.1416" effort="56" velocity="3.14"/>
+  </joint>
+  <link name="forearm_link">
+    <visual><geometry><cylinder length="0.2132" radius="0.025"/></geometry></visual>
+  </link>
+
+  <!-- Wrist 1 (Y-axis) -->
+  <joint name="wrist_1_joint" type="revolute">
+    <origin xyz="-0.2132 0 0.13105" rpy="0 1.5708 0"/>
+    <parent link="forearm_link"/>
+    <child link="wrist_1_link"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-6.2832" upper="6.2832" effort="28" velocity="6.28"/>
+  </joint>
+  <link name="wrist_1_link">
+    <visual><geometry><cylinder length="0.04" radius="0.02"/></geometry></visual>
+  </link>
+
+  <!-- Wrist 2 (Z-axis) -->
+  <joint name="wrist_2_joint" type="revolute">
+    <origin xyz="0 -0.08535 0" rpy="0 0 0"/>
+    <parent link="wrist_1_link"/>
+    <child link="wrist_2_link"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-6.2832" upper="6.2832" effort="28" velocity="6.28"/>
+  </joint>
+  <link name="wrist_2_link">
+    <visual><geometry><cylinder length="0.04" radius="0.02"/></geometry></visual>
+  </link>
+
+  <!-- Wrist 3 (Y-axis) -->
+  <joint name="wrist_3_joint" type="revolute">
+    <origin xyz="0 0.0921 0" rpy="0 0 0"/>
+    <parent link="wrist_2_link"/>
+    <child link="ee_link"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-6.2832" upper="6.2832" effort="28" velocity="6.28"/>
+  </joint>
+  <link name="ee_link">
+    <visual><geometry><sphere radius="0.01"/></geometry></visual>
+  </link>
+
+</robot>

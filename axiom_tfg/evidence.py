@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from axiom_tfg.gates.ik_feasibility import check_ik_feasibility
 from axiom_tfg.gates.keepout import check_keepout
+from axiom_tfg.gates.path_keepout import check_path_keepout
 from axiom_tfg.gates.payload import check_payload
 from axiom_tfg.gates.reachability import check_reachability
 from axiom_tfg.models import (
@@ -86,6 +87,16 @@ def run_gates(spec: TaskSpec) -> EvidencePacket:
                 failed_gate = result.gate_name
                 all_fixes.extend(fixes)
                 break  # fast red-light
+
+    # ── Path keepout gate (optional, runs after endpoint keepout) ──
+    if failed_gate is None:
+        path_result = check_path_keepout(spec)
+        if path_result is not None:
+            result, fixes = path_result
+            checks.append(result)
+            if result.status == GateStatus.FAIL:
+                failed_gate = result.gate_name
+                all_fixes.extend(fixes)
 
     verdict = Verdict.HARD_CANT if failed_gate else Verdict.CAN
 

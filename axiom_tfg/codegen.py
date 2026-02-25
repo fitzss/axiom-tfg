@@ -35,6 +35,7 @@ import re
 from typing import Any, Callable
 
 from axiom_tfg.resolve import Constraint, ResolveResult, resolve
+from axiom_tfg.robots import ROBOT_REGISTRY
 
 
 # ── System prompt ────────────────────────────────────────────────────────
@@ -176,8 +177,8 @@ def make_codegen_vla(
     api_key: str | None = None,
     base_url: str | None = None,
     robot: str = "ur5e",
-    max_reach_m: float = 0.85,
-    max_payload_kg: float = 5.0,
+    max_reach_m: float | None = None,
+    max_payload_kg: float | None = None,
     temperature: float = 0.2,
 ) -> Callable[[str, list[Constraint]], list[dict[str, Any]]]:
     """Create an LLM-backed callable for use with :func:`resolve`.
@@ -200,6 +201,15 @@ def make_codegen_vla(
         max_payload_kg: Max payload surfaced to the LLM (kg).
         temperature: Sampling temperature (lower = more deterministic).
     """
+    # Resolve reach/payload from registry when not explicitly provided.
+    profile = ROBOT_REGISTRY.get(robot)
+    resolved_reach = max_reach_m if max_reach_m is not None else (
+        profile.max_reach_m if profile else 0.85
+    )
+    resolved_payload = max_payload_kg if max_payload_kg is not None else (
+        profile.max_payload_kg if profile else 5.0
+    )
+
     resolved_key = api_key or os.environ.get("AXIOM_OPENAI_API_KEY", "")
     resolved_url = base_url or os.environ.get(
         "AXIOM_OPENAI_BASE_URL", "https://api.groq.com/openai/v1"
@@ -215,7 +225,7 @@ def make_codegen_vla(
 
     def vla(task: str, constraints: list[Constraint]) -> list[dict[str, Any]]:
         messages = _build_messages(
-            task, constraints, robot, max_reach_m, max_payload_kg
+            task, constraints, robot, resolved_reach, resolved_payload
         )
         raw = _call_llm(
             messages,
@@ -236,8 +246,8 @@ def prompt_and_resolve(
     api_key: str | None = None,
     base_url: str | None = None,
     robot: str = "ur5e",
-    max_reach_m: float = 0.85,
-    max_payload_kg: float = 5.0,
+    max_reach_m: float | None = None,
+    max_payload_kg: float | None = None,
     max_retries: int = 3,
     temperature: float = 0.2,
     keepout_zones: list[dict[str, Any]] | None = None,
@@ -285,13 +295,22 @@ def prompt_and_resolve(
         else:
             print(f"Could not resolve: {result.constraints[-1].instruction}")
     """
+    # Resolve reach/payload from registry when not explicitly provided.
+    profile = ROBOT_REGISTRY.get(robot)
+    resolved_reach = max_reach_m if max_reach_m is not None else (
+        profile.max_reach_m if profile else 0.85
+    )
+    resolved_payload = max_payload_kg if max_payload_kg is not None else (
+        profile.max_payload_kg if profile else 5.0
+    )
+
     vla = make_codegen_vla(
         model=model,
         api_key=api_key,
         base_url=base_url,
         robot=robot,
-        max_reach_m=max_reach_m,
-        max_payload_kg=max_payload_kg,
+        max_reach_m=resolved_reach,
+        max_payload_kg=resolved_payload,
         temperature=temperature,
     )
     return resolve(
@@ -299,7 +318,7 @@ def prompt_and_resolve(
         task,
         robot=robot,
         max_retries=max_retries,
-        max_reach_m=max_reach_m,
-        max_payload_kg=max_payload_kg,
+        max_reach_m=resolved_reach,
+        max_payload_kg=resolved_payload,
         keepout_zones=keepout_zones,
     )

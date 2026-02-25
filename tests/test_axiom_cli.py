@@ -64,7 +64,7 @@ class TestRun:
         )
         ev = json.loads((out / "evidence.json").read_text())
         assert ev["verdict"] == "CAN"
-        assert len(ev["checks"]) == 3
+        assert len(ev["checks"]) >= 3
         assert "created_at" in ev
 
     def test_run_invalid_yaml_exit_code_1(self, tmp_path: Path) -> None:

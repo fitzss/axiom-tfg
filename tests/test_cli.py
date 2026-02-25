@@ -24,7 +24,7 @@ def test_run_can(tmp_path: Path) -> None:
     data = json.loads(evidence.read_text())
     assert data["verdict"] == "CAN"
     assert data["failed_gate"] is None
-    assert len(data["checks"]) == 3  # all gates ran
+    assert len(data["checks"]) >= 3  # all gates ran
 
 
 def test_run_cant_reach(tmp_path: Path) -> None:

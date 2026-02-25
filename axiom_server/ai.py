@@ -9,6 +9,8 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from axiom_tfg.robots import ROBOT_REGISTRY
+
 # ── Configuration (env vars) ────────────────────────────────────────────
 
 _DEFAULT_GEMINI_MODELS = [
@@ -326,10 +328,8 @@ def _openai_explain(evidence: dict, model_name: str | None = None) -> tuple[str,
 # ── Demo fallback (local, deterministic) ────────────────────────────────
 
 _ROBOT_DB: dict[str, dict] = {
-    "ur5e":   {"max_reach_m": 1.85, "max_payload_kg": 5.0},
-    "ur10e":  {"max_reach_m": 1.30, "max_payload_kg": 12.5},
-    "franka": {"max_reach_m": 0.855, "max_payload_kg": 3.0},
-    "fanuc":  {"max_reach_m": 2.0, "max_payload_kg": 7.0},
+    name: {"max_reach_m": p.max_reach_m, "max_payload_kg": p.max_payload_kg}
+    for name, p in ROBOT_REGISTRY.items()
 }
 
 

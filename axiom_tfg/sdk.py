@@ -20,13 +20,12 @@ Usage::
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 from axiom_tfg.evidence import run_gates
 from axiom_tfg.models import EvidencePacket, TaskSpec
+from axiom_tfg.robots import ROBOT_REGISTRY
 
 
 @dataclass(frozen=True)
@@ -87,11 +86,7 @@ def check(spec: TaskSpec) -> Result:
     return _packet_to_result(packet)
 
 
-# ── Bundled URDF path ─────────────────────────────────────────────────────
-
-_BUNDLED_URDFS: dict[str, str] = {
-    "ur5e": str(Path(__file__).resolve().parent / "data" / "ur5e.urdf"),
-}
+_SENTINEL = object()
 
 
 def check_simple(
@@ -102,11 +97,11 @@ def check_simple(
     orientation_tolerance_rad: float | None = None,
     robot: str = "ur5e",
     urdf_path: str | None = None,
-    base_link: str | None = "base_link",
-    ee_link: str | None = "ee_link",
+    base_link: object = _SENTINEL,
+    ee_link: object = _SENTINEL,
     base_xyz: list[float] | None = None,
-    max_reach_m: float = 1.85,
-    max_payload_kg: float = 5.0,
+    max_reach_m: object = _SENTINEL,
+    max_payload_kg: object = _SENTINEL,
     mass_kg: float = 0.5,
     tolerance_m: float = 0.01,
     task_id: str | None = None,
@@ -116,11 +111,46 @@ def check_simple(
 ) -> Result:
     """Run feasibility gates with keyword arguments — no YAML needed.
 
-    If ``urdf_path`` is not provided and ``robot`` matches a bundled URDF
-    (currently ``"ur5e"``), the bundled file is used automatically.
+    If ``robot`` matches a registry entry, ``max_reach_m``, ``max_payload_kg``,
+    ``base_link``, ``ee_link``, and ``urdf_path`` are auto-populated from the
+    profile.  Explicit kwargs still override.
     """
-    if urdf_path is None:
-        urdf_path = _BUNDLED_URDFS.get(robot)
+    profile = ROBOT_REGISTRY.get(robot)
+
+    if urdf_path is None and profile is not None:
+        urdf_path = profile.urdf_path
+
+    resolved_base_link: str | None
+    if base_link is not _SENTINEL:
+        resolved_base_link = base_link  # type: ignore[assignment]
+    elif profile is not None:
+        resolved_base_link = profile.base_link
+    else:
+        resolved_base_link = "base_link"
+
+    resolved_ee_link: str | None
+    if ee_link is not _SENTINEL:
+        resolved_ee_link = ee_link  # type: ignore[assignment]
+    elif profile is not None:
+        resolved_ee_link = profile.ee_link
+    else:
+        resolved_ee_link = "ee_link"
+
+    resolved_reach: float
+    if max_reach_m is not _SENTINEL:
+        resolved_reach = max_reach_m  # type: ignore[assignment]
+    elif profile is not None:
+        resolved_reach = profile.max_reach_m
+    else:
+        resolved_reach = 1.85
+
+    resolved_payload: float
+    if max_payload_kg is not _SENTINEL:
+        resolved_payload = max_payload_kg  # type: ignore[assignment]
+    elif profile is not None:
+        resolved_payload = profile.max_payload_kg
+    else:
+        resolved_payload = 5.0
 
     data: dict[str, Any] = {
         "task_id": task_id or "sdk-check",
@@ -137,11 +167,11 @@ def check_simple(
         "constructor": {
             "id": robot,
             "base_pose": {"xyz": base_xyz or [0.0, 0.0, 0.0]},
-            "max_reach_m": max_reach_m,
-            "max_payload_kg": max_payload_kg,
+            "max_reach_m": resolved_reach,
+            "max_payload_kg": resolved_payload,
             "urdf_path": urdf_path,
-            "base_link": base_link,
-            "ee_link": ee_link,
+            "base_link": resolved_base_link,
+            "ee_link": resolved_ee_link,
         },
         "allowed_adjustments": {
             "can_move_target": can_move_target,
