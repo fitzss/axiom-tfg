@@ -76,6 +76,10 @@ def validate_action(
     All other gate parameters (robot, keepout zones, etc.) are passed
     through as keyword arguments.
     """
+    # Determine if payload splitting is allowed based on object semantics.
+    is_splittable = action.get("is_splittable")
+    can_split = bool(is_splittable) if is_splittable is not None else False
+
     check_kwargs: dict[str, Any] = dict(
         target_xyz=action["target_xyz"],
         target_rpy_rad=action.get("target_rpy_rad"),
@@ -87,6 +91,7 @@ def validate_action(
         max_reach_m=max_reach_m,
         max_payload_kg=max_payload_kg,
         keepout_zones=keepout_zones,
+        can_split_payload=can_split,
     )
     if base_link is not None:
         check_kwargs["base_link"] = base_link

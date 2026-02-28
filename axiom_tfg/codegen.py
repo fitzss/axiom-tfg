@@ -52,14 +52,15 @@ Robot: {robot}
 
 Each action is a JSON object with:
   "target_xyz": [x, y, z]  — end-effector target in metres (REQUIRED)
-  "mass_kg": <number>       — object mass in kg (optional, default 0.5)
+  "mass_kg": <number>       — object mass in kg (REQUIRED — estimate if unknown)
+  "is_splittable": <bool>   — can the object be divided into smaller loads? (REQUIRED)
 
 Output ONLY a JSON array.  No explanation, no markdown, no code.
 
 Example — pick a 0.3 kg part from the left, place it on the right:
 [
-  {{"target_xyz": [0.3, -0.3, 0.15], "mass_kg": 0.3}},
-  {{"target_xyz": [0.3, 0.3, 0.20], "mass_kg": 0.3}}
+  {{"target_xyz": [0.3, -0.3, 0.15], "mass_kg": 0.3, "is_splittable": false}},
+  {{"target_xyz": [0.3, 0.3, 0.20], "mass_kg": 0.3, "is_splittable": false}}
 ]
 
 Rules:
@@ -67,6 +68,9 @@ Rules:
 - Keep targets within {max_reach_m} m of origin.
 - Use realistic heights (table ≈ 0.1–0.2 m, shelf ≈ 0.4–0.8 m).
 - For pick-then-place, output two actions (pick target, then place target).
+- mass_kg is REQUIRED.  Estimate if the prompt does not specify.
+- is_splittable: true only for divisible loads (bags, boxes of parts, bulk).
+  false for rigid single objects (plates, motors, tools, bottles).
 """
 
 _CONSTRAINT_ADDENDUM = """
@@ -141,6 +145,11 @@ def _parse_actions(text: str) -> list[dict[str, Any]]:
         xyz = action["target_xyz"]
         if not isinstance(xyz, list) or len(xyz) != 3:
             raise ValueError(f"Action {i} 'target_xyz' must be [x, y, z]")
+        if "mass_kg" not in action:
+            raise ValueError(
+                f"Action {i} missing required field 'mass_kg'. "
+                f"You must include mass_kg in every action."
+            )
 
     return parsed
 

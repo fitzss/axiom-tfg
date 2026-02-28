@@ -70,7 +70,7 @@ result = prompt_and_resolve(
 
 print(result.resolved)   # True
 print(result.attempts)   # 1 (or more, if the LLM needed correction)
-print(result.actions)    # [{"target_xyz": [0.3, -0.3, 0.15], "mass_kg": 0.3}, ...]
+print(result.actions)    # [{"target_xyz": [0.3, -0.3, 0.15], "mass_kg": 0.3, "is_splittable": false}, ...]
 ```
 
 Works with any OpenAI-compatible API. Defaults to Groq free tier.
@@ -86,7 +86,7 @@ def my_vla(task: str, constraints: list[Constraint]) -> list[dict]:
     # Your model here. Use constraints to guide re-planning:
     #   constraints[-1].instruction  → "Move target within 0.85m of base"
     #   constraints[-1].proposed_patch → {"target_xyz": [0.26, 0.26, 0.26]}
-    return [{"target_xyz": [0.4, 0.2, 0.5], "mass_kg": 0.35}]
+    return [{"target_xyz": [0.4, 0.2, 0.5], "mass_kg": 0.35, "is_splittable": False}]
 
 result = resolve(my_vla, "pick up the mug")
 if result.resolved:
@@ -103,7 +103,7 @@ Check a single action or skip the loop entirely:
 from axiom_tfg import validate_action, check_simple
 
 # Gate one action
-r = validate_action({"target_xyz": [0.4, 0.2, 0.5], "mass_kg": 0.35})
+r = validate_action({"target_xyz": [0.4, 0.2, 0.5], "mass_kg": 0.35, "is_splittable": False})
 print(r.allowed)  # True
 
 # Lower-level: full SDK check with all parameters
@@ -113,9 +113,30 @@ print(r.reason_code)          # "NO_IK_SOLUTION"
 print(r.top_fix_instruction)  # "No IK solution: ... Nearest reachable: [0.26, ...]"
 ```
 
+## Supported robots
+
+Five robots out of the box, each with real kinematic parameters and a bundled URDF:
+
+| Robot | DOF | Reach (m) | Payload (kg) |
+|-------|-----|-----------|-------------|
+| `ur3e` | 6 | 0.50 | 3.0 |
+| `ur5e` | 6 | 1.85 | 5.0 |
+| `ur10e` | 6 | 1.30 | 12.5 |
+| `franka` | 7 | 0.855 | 3.0 |
+| `kuka_iiwa14` | 7 | 0.82 | 14.0 |
+
+Pass `robot="franka"` to any function and reach, payload, URDF, link names are all set automatically. Explicit kwargs still override.
+
+```python
+from axiom_tfg import check_simple
+
+r = check_simple(target_xyz=[0.4, 0.2, 0.3], robot="franka")
+# Uses franka's 0.855m reach, 3.0kg payload, and 7-DOF URDF automatically
+```
+
 ## What Axiom checks
 
-Four gates run in sequence. First failure short-circuits.
+Five gates run in sequence. First failure short-circuits.
 
 | Gate | Question | Reason code |
 |------|----------|-------------|
@@ -123,13 +144,14 @@ Four gates run in sequence. First failure short-circuits.
 | **Reachability** | Is the target within the robot's reach sphere? (fallback when no URDF) | `OUT_OF_REACH` |
 | **Payload** | Can the robot lift this mass? | `OVER_PAYLOAD` |
 | **Keepout** | Is the target outside all forbidden zones? | `IN_KEEP_OUT_ZONE` |
+| **Path keepout** | Does the path to the target cross any forbidden zone? | `PATH_CROSSES_KEEP_OUT` |
 
 Every failure comes with a **counterfactual fix** — the smallest change that would make it work:
 
 - `MOVE_TARGET` — exact coordinates to a reachable point
 - `MOVE_BASE` — move the robot closer
-- `SPLIT_PAYLOAD` — split into N trips
-- `CHANGE_CONSTRUCTOR` — use a bigger robot
+- `SPLIT_PAYLOAD` — split into N trips with staging coordinates and per-trip mass
+- `CHANGE_CONSTRUCTOR` — names specific capable robots from the registry (e.g. "Robots that can handle this: ur10e (12.5kg), kuka_iiwa14 (14.0kg)")
 
 These fixes are what close the loop. The LLM reads the fix instruction and adjusts.
 
@@ -296,12 +318,13 @@ environment:
 allowed_adjustments:
   can_move_target: true
   can_change_constructor: true
+  can_split_payload: false        # true only for divisible loads
 ```
 
 ## Tests
 
 ```bash
-pytest -v    # 236 tests
+pytest -v    # 262 tests
 ```
 
 ## License

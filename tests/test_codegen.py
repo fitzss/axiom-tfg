@@ -23,7 +23,7 @@ class TestParseActions:
     """Parse LLM text into action dicts."""
 
     def test_parse_json_array(self) -> None:
-        text = '[{"target_xyz": [0.3, 0.2, 0.1]}]'
+        text = '[{"target_xyz": [0.3, 0.2, 0.1], "mass_kg": 0.5}]'
         actions = _parse_actions(text)
         assert len(actions) == 1
         assert actions[0]["target_xyz"] == [0.3, 0.2, 0.1]
@@ -37,28 +37,33 @@ class TestParseActions:
         assert len(actions) == 2
 
     def test_parse_markdown_fenced(self) -> None:
-        text = '```json\n[{"target_xyz": [0.3, 0.2, 0.1]}]\n```'
+        text = '```json\n[{"target_xyz": [0.3, 0.2, 0.1], "mass_kg": 0.5}]\n```'
         actions = _parse_actions(text)
         assert len(actions) == 1
 
     def test_parse_markdown_no_language(self) -> None:
-        text = '```\n[{"target_xyz": [0.3, 0.2, 0.1]}]\n```'
+        text = '```\n[{"target_xyz": [0.3, 0.2, 0.1], "mass_kg": 0.5}]\n```'
         actions = _parse_actions(text)
         assert len(actions) == 1
 
     def test_parse_single_dict_normalized(self) -> None:
-        text = '{"target_xyz": [0.3, 0.2, 0.1]}'
+        text = '{"target_xyz": [0.3, 0.2, 0.1], "mass_kg": 0.5}'
         actions = _parse_actions(text)
         assert len(actions) == 1
 
     def test_parse_with_whitespace(self) -> None:
-        text = '  \n [{"target_xyz": [0.3, 0.2, 0.1]}] \n  '
+        text = '  \n [{"target_xyz": [0.3, 0.2, 0.1], "mass_kg": 0.5}] \n  '
         actions = _parse_actions(text)
         assert len(actions) == 1
 
     def test_parse_missing_target_xyz_raises(self) -> None:
         text = '[{"mass_kg": 0.5}]'
         with pytest.raises(ValueError, match="target_xyz"):
+            _parse_actions(text)
+
+    def test_parse_missing_mass_kg_raises(self) -> None:
+        text = '[{"target_xyz": [0.3, 0.2, 0.1]}]'
+        with pytest.raises(ValueError, match="mass_kg"):
             _parse_actions(text)
 
     def test_parse_bad_target_xyz_raises(self) -> None:
@@ -175,7 +180,7 @@ class TestMakeCodegenVla:
 
         def capture_llm(messages, **kwargs):
             captured_messages.append(messages)
-            return '[{"target_xyz": [0.3, 0.2, 0.1]}]'
+            return '[{"target_xyz": [0.3, 0.2, 0.1], "mass_kg": 0.5}]'
 
         with patch("axiom_tfg.codegen._call_llm", side_effect=capture_llm):
             vla = make_codegen_vla(api_key="test-key")
@@ -200,7 +205,7 @@ class TestMakeCodegenVla:
 
         def capture_llm(messages, *, model, **kwargs):
             captured.append(model)
-            return '[{"target_xyz": [0.3, 0.2, 0.1]}]'
+            return '[{"target_xyz": [0.3, 0.2, 0.1], "mass_kg": 0.5}]'
 
         with patch("axiom_tfg.codegen._call_llm", side_effect=capture_llm):
             vla = make_codegen_vla(api_key="k", model="gpt-4o")
@@ -265,8 +270,8 @@ class TestPromptAndResolve:
             captured_messages.append(messages)
             call_count[0] += 1
             if call_count[0] == 1:
-                return _mock_llm_response([{"target_xyz": [5.0, 5.0, 5.0]}])
-            return _mock_llm_response([{"target_xyz": [0.4, 0.2, 0.5]}])
+                return _mock_llm_response([{"target_xyz": [5.0, 5.0, 5.0], "mass_kg": 0.5}])
+            return _mock_llm_response([{"target_xyz": [0.4, 0.2, 0.5], "mass_kg": 0.5}])
 
         with patch("axiom_tfg.codegen._call_llm", side_effect=capture_llm):
             prompt_and_resolve("pick mug", api_key="test-key")
@@ -282,7 +287,7 @@ class TestPromptAndResolve:
     def test_unresolvable_exhausts_retries(self) -> None:
         """LLM keeps generating unreachable targets."""
         response = _mock_llm_response([
-            {"target_xyz": [5.0, 5.0, 5.0]},
+            {"target_xyz": [5.0, 5.0, 5.0], "mass_kg": 0.5},
         ])
 
         with patch("axiom_tfg.codegen._call_llm", return_value=response):
@@ -318,8 +323,8 @@ class TestPromptAndResolve:
         def mock_llm(messages, **kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
-                return _mock_llm_response([{"target_xyz": [0.5, 0.5, 0.5]}])
-            return _mock_llm_response([{"target_xyz": [0.1, 0.1, 0.1]}])
+                return _mock_llm_response([{"target_xyz": [0.5, 0.5, 0.5], "mass_kg": 0.5}])
+            return _mock_llm_response([{"target_xyz": [0.1, 0.1, 0.1], "mass_kg": 0.5}])
 
         with patch("axiom_tfg.codegen._call_llm", side_effect=mock_llm):
             result = prompt_and_resolve(
@@ -358,7 +363,7 @@ class TestPromptAndResolve:
 
     def test_markdown_fenced_response_handled(self) -> None:
         """LLM wraps response in markdown fences — should still parse."""
-        response = '```json\n[{"target_xyz": [0.4, 0.2, 0.5]}]\n```'
+        response = '```json\n[{"target_xyz": [0.4, 0.2, 0.5], "mass_kg": 0.5}]\n```'
 
         with patch("axiom_tfg.codegen._call_llm", return_value=response):
             result = prompt_and_resolve(

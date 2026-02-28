@@ -108,6 +108,7 @@ def check_simple(
     keepout_zones: list[dict[str, Any]] | None = None,
     can_move_target: bool = True,
     can_change_constructor: bool = True,
+    can_split_payload: bool = False,
 ) -> Result:
     """Run feasibility gates with keyword arguments — no YAML needed.
 
@@ -176,6 +177,7 @@ def check_simple(
         "allowed_adjustments": {
             "can_move_target": can_move_target,
             "can_change_constructor": can_change_constructor,
+            "can_split_payload": can_split_payload,
         },
     }
 
