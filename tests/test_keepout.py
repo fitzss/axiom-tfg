@@ -97,12 +97,11 @@ def test_outside_buffer_passes() -> None:
 
 
 def test_zero_buffer_on_boundary_passes() -> None:
-    """With zero buffer, a point exactly on the AABB boundary is considered inside
-    (the boundary is inclusive), but a point at max + epsilon should pass."""
+    """With zero buffer, a point exactly on the AABB boundary is outside
+    (the zone is an open set so that ``_minimal_escape`` works correctly)."""
     spec = _make_spec(target=[3.0, 2.0, 2.0], zones=[ZONE], safety_buffer=0.0)
     result, _ = check_keepout(spec)
-    # On the boundary → still inside the closed AABB
-    assert result.status == GateStatus.FAIL
+    assert result.status == GateStatus.PASS
 
 
 # ── counterfactual fix ────────────────────────────────────────────────────

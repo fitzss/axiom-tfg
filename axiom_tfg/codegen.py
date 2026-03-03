@@ -54,6 +54,7 @@ Each action is a JSON object with:
   "target_xyz": [x, y, z]  — end-effector target in metres (REQUIRED)
   "mass_kg": <number>       — object mass in kg (REQUIRED — estimate if unknown)
   "is_splittable": <bool>   — can the object be divided into smaller loads? (REQUIRED)
+  "locked_fields": [<str>]  — fields the user explicitly specified (optional)
 
 Output ONLY a JSON array.  No explanation, no markdown, no code.
 
@@ -71,6 +72,14 @@ Rules:
 - mass_kg is REQUIRED.  Estimate if the prompt does not specify.
 - is_splittable: true only for divisible loads (bags, boxes of parts, bulk).
   false for rigid single objects (plates, motors, tools, bottles).
+- If the user specifies an exact coordinate or mass, include those field names
+  in locked_fields so the validator won't rewrite user intent.
+"""
+
+_ENVIRONMENT_ADDENDUM = """
+Environment:
+{zones}
+Avoid placing targets inside these zones.
 """
 
 _CONSTRAINT_ADDENDUM = """
@@ -86,12 +95,26 @@ Generate a corrected JSON array that satisfies ALL of the above constraints.
 # ── Prompt construction ──────────────────────────────────────────────────
 
 
+def _format_keepout_zones(zones: list[dict[str, Any]]) -> str:
+    """Format keepout zones for inclusion in the system prompt."""
+    lines: list[str] = []
+    for z in zones:
+        zid = z.get("id", "zone")
+        lo = z.get("min_xyz", [0, 0, 0])
+        hi = z.get("max_xyz", [0, 0, 0])
+        lines.append(
+            f"  - {zid}: min={lo}, max={hi}"
+        )
+    return "\n".join(lines)
+
+
 def _build_messages(
     task: str,
     constraints: list[Constraint],
     robot: str,
     max_reach_m: float,
     max_payload_kg: float,
+    keepout_zones: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, str]]:
     """Build chat messages (system + user) for the LLM."""
     system = _SYSTEM_PROMPT.format(
@@ -99,6 +122,11 @@ def _build_messages(
         max_reach_m=max_reach_m,
         max_payload_kg=max_payload_kg,
     )
+
+    if keepout_zones:
+        system += _ENVIRONMENT_ADDENDUM.format(
+            zones=_format_keepout_zones(keepout_zones),
+        )
 
     user = task
     if constraints:
@@ -189,6 +217,7 @@ def make_codegen_vla(
     max_reach_m: float | None = None,
     max_payload_kg: float | None = None,
     temperature: float = 0.2,
+    keepout_zones: list[dict[str, Any]] | None = None,
 ) -> Callable[[str, list[Constraint]], list[dict[str, Any]]]:
     """Create an LLM-backed callable for use with :func:`resolve`.
 
@@ -234,7 +263,8 @@ def make_codegen_vla(
 
     def vla(task: str, constraints: list[Constraint]) -> list[dict[str, Any]]:
         messages = _build_messages(
-            task, constraints, robot, resolved_reach, resolved_payload
+            task, constraints, robot, resolved_reach, resolved_payload,
+            keepout_zones=keepout_zones,
         )
         raw = _call_llm(
             messages,
@@ -321,6 +351,7 @@ def prompt_and_resolve(
         max_reach_m=resolved_reach,
         max_payload_kg=resolved_payload,
         temperature=temperature,
+        keepout_zones=keepout_zones,
     )
     return resolve(
         vla,

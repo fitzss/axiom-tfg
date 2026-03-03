@@ -130,5 +130,29 @@ def demo(
     typer.echo(f"\nEvidence written to: {out}/")
 
 
+@app.command(name="demo-factory")
+def demo_factory(
+    live: bool = typer.Option(
+        False, "--live", help="Use a real LLM instead of the mock VLA"
+    ),
+    model: str = typer.Option(
+        None, "--model", "-m", help="LLM model name (requires --live)"
+    ),
+    base_url: str = typer.Option(
+        None, "--base-url", help="LLM API base URL (requires --live)"
+    ),
+) -> None:
+    """CNC machine tending demo — shows the resolve loop fixing 3 physics problems."""
+    import time
+
+    from axiom_tfg.demo_scenario import print_demo, run_demo
+
+    t0 = time.monotonic()
+    result = run_demo(live=live, model=model, base_url=base_url)
+    elapsed = time.monotonic() - t0
+
+    print_demo(result, elapsed_s=elapsed)
+
+
 if __name__ == "__main__":
     app()

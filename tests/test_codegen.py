@@ -377,6 +377,31 @@ class TestPromptAndResolve:
 # ── Top-level imports ────────────────────────────────────────────────────
 
 
+class TestKeepoutZonesInPrompt:
+    """Keepout zones appear in the system prompt when provided."""
+
+    def test_keepout_zones_in_system_prompt(self) -> None:
+        zones = [
+            {"id": "safety_cage", "min_xyz": [0.3, 0.3, 0.0], "max_xyz": [0.8, 0.8, 1.0]},
+        ]
+        msgs = _build_messages("pick mug", [], "ur5e", 0.85, 5.0, keepout_zones=zones)
+        system = msgs[0]["content"]
+        assert "safety_cage" in system
+        assert "0.3, 0.3, 0.0" in system
+        assert "0.8, 0.8, 1.0" in system
+        assert "Environment" in system
+
+    def test_no_keepout_zones_no_environment_section(self) -> None:
+        msgs = _build_messages("pick mug", [], "ur5e", 0.85, 5.0)
+        system = msgs[0]["content"]
+        assert "Environment" not in system
+
+    def test_locked_fields_in_system_prompt(self) -> None:
+        msgs = _build_messages("pick mug", [], "ur5e", 0.85, 5.0)
+        system = msgs[0]["content"]
+        assert "locked_fields" in system
+
+
 class TestImports:
 
     def test_import_prompt_and_resolve(self) -> None:

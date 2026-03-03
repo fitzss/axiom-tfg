@@ -136,6 +136,7 @@ class GateResult(BaseModel):
     status: GateStatus
     measured_values: dict[str, Any] = Field(default_factory=dict)
     reason_code: str | None = None
+    validation_level: str | None = None
 
 
 class CounterfactualFix(BaseModel):
@@ -151,6 +152,7 @@ class EvidencePacket(BaseModel):
     failed_gate: str | None = None
     checks: list[GateResult] = Field(default_factory=list)
     counterfactual_fixes: list[CounterfactualFix] = Field(default_factory=list)
+    validation_level_reached: str | None = None
     created_at: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat(),
     )

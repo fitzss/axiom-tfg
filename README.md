@@ -25,33 +25,79 @@ English in, physically valid robot actions out.
 
 ## How the fix loop works
 
-```
-"pick up the mug and put it on the shelf"
-                  |
-         LLM generates actions
-         [pick at (0.3, -0.2, 0.1), place at (2.5, 1.0, 2.0)]
-                  |
-         Axiom validates each action
-         pick: OK  |  place: BLOCKED — out of reach
-                  |
-         Fix fed back to LLM: "move target within 0.85m"
-                  |
-         LLM regenerates with constraint
-         [pick at (0.3, -0.2, 0.1), place at (0.5, 0.3, 0.6)]
-                  |
-         Axiom validates — all pass
-                  |
-         Execute with confidence
+```mermaid
+flowchart LR
+    Task(["'Pick up the mug<br/>and put it on the shelf'"])
+    LLM["Planner / LLM<br/>generates actions"]
+    Axiom{"Axiom<br/>validates physics"}
+    Fix["Compute fix<br/>exact coordinates<br/>+ instruction"]
+    Robot(["Execute<br/>on robot"])
+
+    Task --> LLM
+    LLM --> Axiom
+    Axiom -- "✓ all gates pass" --> Robot
+    Axiom -- "✗ gate fails" --> Fix
+    Fix -- "constraint fed back" --> LLM
 ```
 
-This matters because **physics checking is the difference between a demo and a working system.** Text2Motion (Lin et al., 2023) showed that adding geometric feasibility checking raised task success from 13% to 82% — a 6x improvement. Axiom goes further: instead of just rejecting bad plans, it computes the fix and closes the loop, so the LLM converges to a valid plan without human intervention.
+The planner generates actions. Axiom checks each one against physics gates (reach, payload, keepout zones). If a gate fails, Axiom computes the **exact fix** — not just "this failed" but "move to these coordinates" or "split into 2 trips of 4 kg each" — and feeds it back. The planner regenerates with the constraint, and the loop repeats until the plan is valid.
 
-Think of it like a compiler. The LLM is the **frontend** (parses human intent into actions). Axiom is the **optimizer** (validates physics, computes fixes). The VLA or robot is the **backend** (executes motor control). Each layer does one thing well.
+This matters because **physics checking is the difference between a demo and a working system.** Text2Motion (Lin et al., 2023) showed that adding geometric feasibility checking raised task success from 13% to 82%. Axiom goes further: instead of just rejecting bad plans, it computes the fix and closes the loop, so the planner converges without human intervention.
+
+## See it yourself
+
+No API key needed. Install and run one command:
+
+```bash
+pip install -e ".[dev]"
+tfg demo-factory
+```
+
+A UR5e robot tends a CNC machine. The planner proposes 3 naive actions — each hits a different physics wall. Watch Axiom catch each problem, compute the fix, and converge:
 
 ```
- LLM (frontend)  →  Axiom (optimizer)  →  Robot (backend)
- parses intent       validates physics      executes motion
-                     computes fixes
+  The planner generates actions from the task description alone.
+  It doesn't know the robot's reach limits, safety zones, or
+  payload capacity. Without validation, these actions go straight
+  to hardware — and fail.
+
+  Attempt 0  —  planner proposes 3 actions
+    1. Pick from parts bin    target=[2.50, 0.00, 0.30]  2.0 kg
+    2. Load into CNC machine  target=[0.50, 0.50, 0.40]  2.0 kg
+    3. Unload to inspection   target=[0.40, -0.30, 0.20] 8.0 kg
+
+  ✗ Arm can't reach the target — too far from the base
+    Without Axiom: arm hits joint limits, task fails
+    Fix: move target to safe/reachable position → [0.94, 0.00, 0.21]
+
+  Attempt 1
+  ✗ Target is inside a keepout zone — forbidden region
+    Without Axiom: arm enters forbidden zone — loss risk or e-stop
+    Fix: move target to safe/reachable position → [0.28, 0.50, 0.40]
+
+  Attempt 2
+  ✗ Object is too heavy for this robot
+    Without Axiom: motor overload — joint fault or dropped part
+    Fix: split into multiple lighter trips — 2 trips of 4.0 kg each
+
+  Attempt 3  —  planner proposes 4 actions (split the heavy part)
+  ✓ All gates pass — plan is physically valid!
+
+  Resolved in 4 attempts, 3 failures caught and repaired.
+
+  What this replaced:
+    Without Axiom, each failure is discovered on the real robot —
+    the arm stalls, enters a safety zone, or overloads a joint.
+    A human debugs, adjusts coordinates by hand, and retries.
+    With Axiom, the planner gets exact fixes and converges
+    automatically. No simulator, no hardware, no manual tuning.
+```
+
+To run the same scenario with a real LLM instead of the mock planner:
+
+```bash
+export AXIOM_OPENAI_API_KEY="sk-..."
+tfg demo-factory --live --model gpt-4o-mini
 ```
 
 ## Why not just _X_?
@@ -155,7 +201,9 @@ pip install -e ".[dev]"    # from source, Python 3.11+
 ## CLI
 
 ```bash
-tfg demo --out runs/                          # quick demo
+tfg demo-factory                              # CNC tending demo (see above)
+tfg demo-factory --live -m gpt-4o-mini        # same demo with a real LLM
+tfg demo --out runs/                          # gate summary table
 tfg run examples/pick_place_can.yaml          # single feasibility check
 axiom sweep task.yaml --n 50 --seed 1337      # parameter sweep
 axiom replay regressions/ --out artifacts/    # regression replay
@@ -178,7 +226,7 @@ Pre-flight proxy for Nav2 — intercepts `NavigateToPose` goals, validates again
 ## Tests
 
 ```bash
-pytest -v    # 262 tests
+pytest -v    # 279 tests
 ```
 
 ## Further reading

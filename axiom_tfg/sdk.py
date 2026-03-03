@@ -39,6 +39,7 @@ class Result:
     top_fix_instruction: str | None
     top_fix_patch: dict[str, Any] | None
     evidence: dict[str, Any]
+    validation_level_reached: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -48,6 +49,7 @@ class Result:
             "top_fix": self.top_fix,
             "top_fix_instruction": self.top_fix_instruction,
             "top_fix_patch": self.top_fix_patch,
+            "validation_level_reached": self.validation_level_reached,
             "evidence": self.evidence,
         }
 
@@ -77,6 +79,7 @@ def _packet_to_result(packet: EvidencePacket) -> Result:
         top_fix_instruction=top_fix_instruction,
         top_fix_patch=top_fix_patch,
         evidence=packet.model_dump(mode="json"),
+        validation_level_reached=packet.validation_level_reached,
     )
 
 

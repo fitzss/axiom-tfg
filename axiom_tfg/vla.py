@@ -80,6 +80,13 @@ def validate_action(
     is_splittable = action.get("is_splittable")
     can_split = bool(is_splittable) if is_splittable is not None else False
 
+    # Derive adjustment flags from locked_fields.
+    locked_fields = action.get("locked_fields", [])
+    can_move_target = "target_xyz" not in locked_fields
+    can_change_constructor = "constructor" not in locked_fields
+    if "mass_kg" in locked_fields:
+        can_split = False
+
     check_kwargs: dict[str, Any] = dict(
         target_xyz=action["target_xyz"],
         target_rpy_rad=action.get("target_rpy_rad"),
@@ -92,6 +99,8 @@ def validate_action(
         max_payload_kg=max_payload_kg,
         keepout_zones=keepout_zones,
         can_split_payload=can_split,
+        can_move_target=can_move_target,
+        can_change_constructor=can_change_constructor,
     )
     if base_link is not None:
         check_kwargs["base_link"] = base_link

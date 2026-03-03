@@ -124,6 +124,58 @@ class TestValidatePlan:
         assert r.reason == "OVER_PAYLOAD"
 
 
+class TestLockedFields:
+    """locked_fields suppresses corresponding fixes."""
+
+    def test_locked_target_suppresses_move_fix(self) -> None:
+        """Unreachable target with locked target_xyz → no MOVE_TARGET fix."""
+        r = validate_action({
+            "target_xyz": [5.0, 5.0, 5.0],
+            "mass_kg": 0.35,
+            "locked_fields": ["target_xyz"],
+        })
+        assert r.allowed is False
+        # Fix should NOT be MOVE_TARGET (target is locked)
+        if r.sdk_result.top_fix is not None:
+            assert r.sdk_result.top_fix != "MOVE_TARGET"
+
+    def test_locked_mass_suppresses_split_fix(self) -> None:
+        """Over-payload with locked mass_kg → no SPLIT_PAYLOAD fix."""
+        r = validate_action({
+            "target_xyz": [0.4, 0.2, 0.5],
+            "mass_kg": 100.0,
+            "is_splittable": True,
+            "locked_fields": ["mass_kg"],
+        })
+        assert r.allowed is False
+        assert r.reason == "OVER_PAYLOAD"
+        # Even though is_splittable=True, mass_kg lock suppresses SPLIT_PAYLOAD
+        fixes = r.sdk_result.evidence.get("counterfactual_fixes", [])
+        fix_types = [f["type"] for f in fixes]
+        assert "SPLIT_PAYLOAD" not in fix_types
+
+    def test_locked_constructor_suppresses_change_fix(self) -> None:
+        """Unreachable target with locked constructor → no CHANGE_CONSTRUCTOR fix."""
+        r = validate_action({
+            "target_xyz": [5.0, 5.0, 5.0],
+            "mass_kg": 0.35,
+            "locked_fields": ["constructor"],
+        })
+        assert r.allowed is False
+        fixes = r.sdk_result.evidence.get("counterfactual_fixes", [])
+        fix_types = [f["type"] for f in fixes]
+        assert "CHANGE_CONSTRUCTOR" not in fix_types
+
+    def test_no_locked_fields_preserves_behavior(self) -> None:
+        """Absent locked_fields → fixes still proposed (backward compat)."""
+        r = validate_action({
+            "target_xyz": [5.0, 5.0, 5.0],
+            "mass_kg": 0.35,
+        })
+        assert r.allowed is False
+        assert r.fix is not None  # a fix is proposed
+
+
 class TestImports:
     """VLA adapter is importable from the top-level package."""
 

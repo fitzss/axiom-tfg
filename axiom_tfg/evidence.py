@@ -42,6 +42,51 @@ def validate_task_spec(path: Path) -> list[str]:
     return []
 
 
+# ── Validation level mapping ──────────────────────────────────────────
+# L0 = endpoint feasibility, L1 = path feasibility
+GATE_LEVELS: dict[str, str] = {
+    "ik_feasibility": "L0",
+    "reachability": "L0",
+    "payload": "L0",
+    "keepout": "L0",
+    "path_keepout": "L1",
+}
+
+
+def _tag_level(result: GateResult) -> None:
+    """Set ``validation_level`` on a gate result from the mapping."""
+    result.validation_level = GATE_LEVELS.get(result.gate_name)
+
+
+def _compute_level_reached(
+    checks: list[GateResult], failed_gate: str | None
+) -> str | None:
+    """Determine the highest validation level fully passed.
+
+    Returns None if any L0 gate failed, "L0" if all L0 passed but L1
+    failed or didn't run, "L1" if everything passed.
+    """
+    levels_seen: set[str] = set()
+    for c in checks:
+        if c.validation_level:
+            levels_seen.add(c.validation_level)
+
+    if failed_gate is not None:
+        # Find the level of the failed gate.
+        failed_level = GATE_LEVELS.get(failed_gate)
+        if failed_level == "L0":
+            return None  # L0 didn't fully pass
+        if failed_level == "L1":
+            return "L0"  # L0 passed, L1 failed
+
+    # No failure — return the highest level that ran.
+    if "L1" in levels_seen:
+        return "L1"
+    if "L0" in levels_seen:
+        return "L0"
+    return None
+
+
 # Ordered pipeline of gates.  Each entry is a callable that returns
 # ``(GateResult, fixes)`` or ``None`` when the gate should be skipped.
 GATE_PIPELINE = [
@@ -68,6 +113,7 @@ def run_gates(spec: TaskSpec) -> EvidencePacket:
     ik_result = check_ik_feasibility(spec)
     if ik_result is not None:
         result, fixes = ik_result
+        _tag_level(result)
         checks.append(result)
         if result.status == GateStatus.FAIL:
             failed_gate = result.gate_name
@@ -82,6 +128,7 @@ def run_gates(spec: TaskSpec) -> EvidencePacket:
             if skip_spherical_reach and gate_fn is check_reachability:
                 continue
             result, fixes = gate_fn(spec)
+            _tag_level(result)
             checks.append(result)
             if result.status == GateStatus.FAIL:
                 failed_gate = result.gate_name
@@ -93,6 +140,7 @@ def run_gates(spec: TaskSpec) -> EvidencePacket:
         path_result = check_path_keepout(spec)
         if path_result is not None:
             result, fixes = path_result
+            _tag_level(result)
             checks.append(result)
             if result.status == GateStatus.FAIL:
                 failed_gate = result.gate_name
@@ -106,6 +154,7 @@ def run_gates(spec: TaskSpec) -> EvidencePacket:
         failed_gate=failed_gate,
         checks=checks,
         counterfactual_fixes=all_fixes,
+        validation_level_reached=_compute_level_reached(checks, failed_gate),
     )
 
 

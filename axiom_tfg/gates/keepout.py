@@ -21,11 +21,15 @@ def _point_in_expanded_aabb(
     zone: KeepoutZone,
     buffer: float,
 ) -> bool:
-    """Return True if *point* is inside the AABB expanded by *buffer*."""
+    """Return True if *point* is strictly inside the AABB expanded by *buffer*.
+
+    The boundary itself is *outside* (open set), so that
+    ``_minimal_escape`` can place a point on the face and have it pass.
+    """
     for i in range(3):
-        if point[i] < zone.min_xyz[i] - buffer:
+        if point[i] <= zone.min_xyz[i] - buffer:
             return False
-        if point[i] > zone.max_xyz[i] + buffer:
+        if point[i] >= zone.max_xyz[i] + buffer:
             return False
     return True
 
@@ -109,7 +113,7 @@ def check_keepout(spec: TaskSpec) -> tuple[GateResult, list[CounterfactualFix]]:
                             f"'{zone.id}' (including {buffer} m safety buffer)."
                         ),
                         proposed_patch={
-                            "projected_target_xyz": [round(v, 6) for v in escaped],
+                            "projected_target_xyz": list(escaped),
                         },
                     )
                 )
