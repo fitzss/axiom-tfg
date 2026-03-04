@@ -170,6 +170,28 @@ def _explain_fix(c: Constraint) -> str:
     return fix_label
 
 
+def _print_workspace(e: Any) -> None:
+    """Print a top-down schematic of the CNC demo workspace."""
+    W = 62
+    bar = "\u2500" * W
+    e("")
+    e(f"  \u250c{bar}\u2510")
+    e(f"  \u2502{'Workspace (top-down)':^{W}}\u2502")
+    e(f"  \u251c{bar}\u2524")
+    e(f"  \u2502{'':{W}}\u2502")
+    e(f"  \u2502{'   [R] ROBOT --- reach (1.85 m) --|-- - - - > [1] PARTS BIN':{W}}\u2502")
+    e(f"  \u2502{'    |                             |             2.52 m away':{W}}\u2502")
+    e(f"  \u2502{'    |    +-- SAFETY CAGE ---+     |':{W}}\u2502")
+    e(f"  \u2502{'    |    |  [2] CNC LOAD    |     |':{W}}\u2502")
+    e(f"  \u2502{'    |    +------------------+     |':{W}}\u2502")
+    e(f"  \u2502{'    |                             |':{W}}\u2502")
+    e(f"  \u2502{'   [3] INSPECTION (8.0 kg)        |':{W}}\u2502")
+    e(f"  \u2502{'':{W}}\u2502")
+    e(f"  \u251c{bar}\u2524")
+    e(f"  \u2502{' [1] Beyond reach   [2] Inside cage   [3] Too heavy (5 kg)':^{W}}\u2502")
+    e(f"  \u2514{bar}\u2518")
+
+
 def print_demo(result: ResolveResult, elapsed_s: float | None = None) -> None:
     """Render the resolve history as a human-readable narrative."""
     e = typer.echo
@@ -178,14 +200,8 @@ def print_demo(result: ResolveResult, elapsed_s: float | None = None) -> None:
     e("\u2554" + "\u2550" * 62 + "\u2557")
     e("\u2551" + "  CNC Machine Tending \u2014 UR5e Demo".center(62) + "\u2551")
     e("\u255a" + "\u2550" * 62 + "\u255d")
-    e("")
-    e("  Scenario: A UR5e robot tends a CNC milling machine.")
-    e("  Robot:      UR5e at origin \u2014 1.85 m reach, 5.0 kg payload")
-    e("  Parts bin:  [2.50, 0.00, 0.30]  (2.52 m from base \u2014 too far)")
-    e("  CNC load:   [0.50, 0.50, 0.40]  (inside safety cage)")
-    e("  Inspection: [0.40, -0.30, 0.20] (finished part weighs 8 kg)")
-    e("")
-    e("  Safety cage keepout: [0.3, 0.3, 0.0] \u2192 [0.8, 0.8, 1.0]")
+
+    _print_workspace(e)
 
     e("")
     e("  The planner generates actions from the task description alone.")
