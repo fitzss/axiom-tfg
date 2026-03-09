@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, model_validator
 
 class Verdict(str, Enum):
     CAN = "CAN"
+    CAN_WITH_PATCH = "CAN_WITH_PATCH"
     HARD_CANT = "HARD_CANT"
 
 

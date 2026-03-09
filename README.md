@@ -1,134 +1,163 @@
 # axiom-tfg
 
-[![CI](https://github.com/your-org/axiom-tfg/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/axiom-tfg/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 
-**Tell a robot what to do in plain English. Axiom makes sure it's physically possible.**
+**Map what a robot can do. Catch what it can't. Compute the fix.**
 
-LLMs can generate robot code from natural language. But they don't know your robot's reach limits, payload capacity, or keepout zones — so the code fails on real hardware. Axiom is the **physics compiler** between the AI and the robot: it validates every action, and when something is infeasible, it computes the *exact fix* and feeds it back to the LLM automatically until the plan works.
+Axiom is a physics validation layer for robot actions. It checks proposed actions against physical constraints (kinematics, payload, keepout zones), computes the smallest change that makes a failed action feasible, and produces structured evidence artifacts for CI, regression testing, and deployment gating.
 
-The fix, not the gate, is the product. Anyone can write a reach check. Nobody else computes the smallest change that makes a failed action feasible *and* closes the loop with the LLM automatically.
+Three capabilities:
+
+1. **Gate** — validate a proposed action, get a verdict (`CAN`, `CAN_WITH_PATCH`, `HARD_CANT`) and a counterfactual fix with exact coordinates
+2. **Atlas** — map a robot's feasible transformation space, compare robots, overlay dataset coverage
+3. **Audit** — analyze trajectory datasets against physical constraints, with cross-robot portability analysis
 
 ```python
-from axiom_tfg import prompt_and_resolve
+from axiom_tfg import check_simple
 
-result = prompt_and_resolve(
-    "pick up the mug and put it on the shelf",
-    api_key="sk-...",       # any OpenAI-compatible API
-)
-
-for action in result.actions:
-    robot.move_to(action["target_xyz"])
+r = check_simple(target_xyz=[0.8, 0.3, 0.2], robot="ur3e", base_xyz=[0, 0, 0.91])
+print(r.verdict)              # "HARD_CANT"
+print(r.reason_code)          # "NO_IK_SOLUTION"
+print(r.top_fix_instruction)  # "No IK solution: ... Nearest reachable: [0.55, 0.21, 1.10]"
 ```
 
-English in, physically valid robot actions out.
+## How it works
 
-## How the fix loop works
-
-```mermaid
-flowchart LR
-    Task(["'Pick up the mug<br/>and put it on the shelf'"])
-    LLM["Planner / LLM<br/>generates actions"]
-    Axiom{"Axiom<br/>validates physics"}
-    Fix["Compute fix<br/>exact coordinates<br/>+ instruction"]
-    Robot(["Execute<br/>on robot"])
-
-    Task --> LLM
-    LLM --> Axiom
-    Axiom -- "✓ all gates pass" --> Robot
-    Axiom -- "✗ gate fails" --> Fix
-    Fix -- "constraint fed back" --> LLM
+```
+Planner/LLM/VLA proposes action
+        |
+        v
+  Axiom validates against physics gates
+        |
+    +---+---+
+    |       |
+   CAN    HARD_CANT
+    |       |
+    v       v
+ Execute  Compute counterfactual fix
+            |
+            v
+        Feed fix back to planner
+            |
+            v
+        Planner adjusts and retries
 ```
 
-The planner generates actions. Axiom checks each one against physics gates (reach, payload, keepout zones). If a gate fails, Axiom computes the **exact fix** — not just "this failed" but "move to these coordinates" or "split into 2 trips of 4 kg each" — and feeds it back. The planner regenerates with the constraint, and the loop repeats until the plan is valid.
+Verdicts are semantically honest:
 
-This matters because **physics checking is the difference between a demo and a working system.** Text2Motion (Lin et al., 2023) showed that adding geometric feasibility checking raised task success from 13% to 82%. Axiom goes further: instead of just rejecting bad plans, it computes the fix and closes the loop, so the planner converges without human intervention.
+| Verdict | Meaning |
+|---------|---------|
+| `CAN` | Target is feasible as proposed |
+| `CAN_WITH_PATCH` | Feasible after adjustment within tolerance |
+| `HARD_CANT` | Infeasible, no acceptable fix within tolerance |
 
-## See it yourself
+When `--auto-fix` accepts a patch, it reports the deviation and risk level. A 262mm patch is `HARD_CANT` with `intent_risk: HIGH` at default 50mm tolerance — the system does not pretend that moving the target 26cm still achieves the original task.
 
-No API key needed. Install and run one command:
+## Quick start
 
 ```bash
 pip install -e ".[dev]"
-tfg demo-factory
+
+# Gate a single action
+axiom gate 0.8,0.3,1.11 --robot ur3e --base-z 0.91
+axiom gate 0.8,0.3,1.11 --robot ur3e --base-z 0.91 --auto-fix
+axiom gate 0.8,0.3,1.11 --robot ur3e --base-z 0.91 --auto-fix --json
+
+# Map feasible space
+axiom atlas ur3e --base-z 0.91 --resolution 0.15
+axiom atlas ur3e --compare franka --base-z 0.91
+
+# Audit a dataset
+axiom audit lerobot/libero_10 --robot ur3e --base-z 0.91 --hz 10 -n 10
+
+# Portability analysis
+axiom audit lerobot/libero_10 --robot ur3e --base-z 0.91 --hz 10 -n 10 --port-from franka
 ```
 
-A UR5e robot tends a CNC machine. The planner proposes 3 naive actions — each hits a different physics wall. Watch Axiom catch each problem, compute the fix, and converge:
-
-```
-  The planner generates actions from the task description alone.
-  It doesn't know the robot's reach limits, safety zones, or
-  payload capacity. Without validation, these actions go straight
-  to hardware — and fail.
-
-  Attempt 0  —  planner proposes 3 actions
-    1. Pick from parts bin    target=[2.50, 0.00, 0.30]  2.0 kg
-    2. Load into CNC machine  target=[0.50, 0.50, 0.40]  2.0 kg
-    3. Unload to inspection   target=[0.40, -0.30, 0.20] 8.0 kg
-
-  ✗ Arm can't reach the target — too far from the base
-    Without Axiom: arm hits joint limits, task fails
-    Fix: move target to safe/reachable position → [0.94, 0.00, 0.21]
-
-  Attempt 1
-  ✗ Target is inside a keepout zone — forbidden region
-    Without Axiom: arm enters forbidden zone — loss risk or e-stop
-    Fix: move target to safe/reachable position → [0.28, 0.50, 0.40]
-
-  Attempt 2
-  ✗ Object is too heavy for this robot
-    Without Axiom: motor overload — joint fault or dropped part
-    Fix: split into multiple lighter trips — 2 trips of 4.0 kg each
-
-  Attempt 3  —  planner proposes 4 actions (split the heavy part)
-  ✓ All gates pass — plan is physically valid!
-
-  Resolved in 4 attempts, 3 failures caught and repaired.
-
-  What this replaced:
-    Without Axiom, each failure is discovered on the real robot —
-    the arm stalls, enters a safety zone, or overloads a joint.
-    A human debugs, adjusts coordinates by hand, and retries.
-    With Axiom, the planner gets exact fixes and converges
-    automatically. No simulator, no hardware, no manual tuning.
-```
-
-To run the same scenario with a real LLM instead of the mock planner:
+## Planner loop demo
 
 ```bash
-export AXIOM_OPENAI_API_KEY="sk-..."
-tfg demo-factory --live --model gpt-4o-mini
+python3 examples/planner_loop.py --robot ur3e --base-z 0.91
 ```
 
-## Why not just _X_?
+```
+  Scenario 1: Pick cup from table
+  AXIOM    CAN — Feasible as proposed. Execute.
 
-| System | Deterministic | Computes fixes | Closes the loop | Robot-specific |
-|--------|:---:|:---:|:---:|:---:|
-| Isaac Sim / PyBullet | Yes | No | No | Yes |
-| MoveIt / OMPL | Yes | No | No | Yes |
-| SayCan | No | No | No | Partially |
-| Text2Motion | Partially | No | Partially | Yes |
-| **Axiom** | **Yes** | **Yes** | **Yes** | **Yes** |
+  Scenario 2: Place cup on far shelf
+  AXIOM    HARD_CANT
+    Gate:   ik_feasibility
+    Delta:  262.5mm (exceeds 50mm tolerance)
+    Risk:   HIGH — patch too large, likely breaks task intent.
 
-No existing system validates deterministically, computes structured fixes, *and* closes the loop with the LLM. (Details: [THE_PROBLEM.md](THE_PROBLEM.md))
+  Scenario 3: Move heavy box
+  AXIOM    HARD_CANT
+    Gate:   payload — 15.0 kg exceeds 3.0 kg limit.
+    Planner must choose a different approach.
+```
 
-## What Axiom checks
+## Atlas: feasible space mapping
+
+Map what a robot can do, compare robots, find blind spots in datasets.
+
+```bash
+# Map UR3e's feasible space
+axiom atlas ur3e --base-z 0.91
+
+# Compare UR3e vs Franka
+axiom atlas ur3e --compare franka --base-z 0.91
+```
+
+```
+  Overlap: ur3e vs franka
+  Both feasible: 35
+  Only ur3e:     0
+  Only franka:   454
+  Overlap:       7.2%
+  franka covers 100.0% of ur3e's space
+  ur3e covers 7.2% of franka's space
+```
+
+```bash
+# Dataset coverage on UR3e
+axiom atlas ur3e --dataset lerobot/libero_10 --base-z 0.91 -n 3
+```
+
+```
+  Coverage: lerobot/libero_10 on ur3e
+  Feasible voxels:     42
+  Visited (feasible):  11 (26.2%)
+  Data in feasible:    478 / 843 (56.7%)
+  Data in infeasible:  365
+```
+
+43% of the Franka dataset is infeasible on UR3e. The data covers only 26% of what UR3e can do — 74% is blind spots.
+
+## Audit: trajectory dataset analysis
+
+```bash
+axiom audit lerobot/libero_10 --robot ur3e --base-z 0.91 --hz 10 -n 10 --port-from franka
+```
+
+Analyzes EE positions from LeRobot datasets. Computes reach margins, EE velocity/jerk profiles, keepout zone violations, and optionally IK feasibility. With `--port-from`, runs cross-robot portability analysis with IK-confirmed violations and computed fixes.
+
+## Physics gates
 
 Five gates run in sequence. First failure short-circuits.
 
 | Gate | Question | Fix |
 |------|----------|-----|
-| **IK feasibility** | Does an IK solution exist for this pose? | `MOVE_TARGET` — exact reachable coordinates |
+| **IK feasibility** | Does an IK solution exist? | `MOVE_TARGET` — nearest reachable point |
 | **Reachability** | Is the target within reach? | `MOVE_TARGET` or `MOVE_BASE` |
 | **Payload** | Can the robot lift this mass? | `SPLIT_PAYLOAD` or `CHANGE_CONSTRUCTOR` |
 | **Keepout** | Is the target in a forbidden zone? | `MOVE_TARGET` — nearest safe point |
 | **Path keepout** | Does the path cross a forbidden zone? | `MOVE_TARGET` — rerouted waypoint |
 
-Every fix carries both a human-readable instruction (for LLMs) and exact coordinates (for code).
+Every fix carries both a human-readable instruction and exact coordinates.
 
 ## Supported robots
 
-Five robots out of the box, each with real kinematic parameters and a bundled URDF:
+Five robots with bundled URDFs and real kinematic parameters:
 
 | Robot | DOF | Reach (m) | Payload (kg) |
 |-------|-----|-----------|-------------|
@@ -138,102 +167,62 @@ Five robots out of the box, each with real kinematic parameters and a bundled UR
 | `franka` | 7 | 0.855 | 3.0 |
 | `kuka_iiwa14` | 7 | 0.82 | 14.0 |
 
-Pass `robot="franka"` to any function — reach, payload, URDF, and link names are all set automatically.
-
 ## Three ways to use it
 
-### 1. One-liner: English to validated robot actions
+### 1. CLI
+
+```bash
+axiom gate 0.4,0.2,1.0 --robot ur3e --base-z 0.91          # single check
+axiom gate 0.4,0.2,1.0 --robot ur3e --auto-fix --json       # with fix + JSON
+axiom atlas ur3e --compare franka --base-z 0.91              # space mapping
+axiom audit lerobot/libero_10 --robot ur3e --hz 10 -n 5     # dataset audit
+axiom run task.yaml --junit                                   # YAML check + JUnit
+axiom sweep task.yaml --n 50 --seed 1337                     # parameter sweep
+axiom replay regressions/ --out artifacts/                    # regression replay
+```
+
+### 2. Python SDK
 
 ```python
+from axiom_tfg import check_simple, validate_action, validate_plan
+
+# Direct check
+r = check_simple(target_xyz=[0.4, 0.2, 0.5], robot="ur3e")
+
+# VLA action gating
+r = validate_action({"target_xyz": [0.4, 0.2, 0.5], "mass_kg": 0.35})
+if r.allowed:
+    robot.execute(action)
+
+# Plan gating (fail-fast)
+r = validate_plan([action1, action2, action3])
+
+# Closed-loop with LLM
 from axiom_tfg import prompt_and_resolve
-
-result = prompt_and_resolve(
-    "pick the 0.3kg sensor from the left bin and place it in the right bin",
-    api_key="sk-...",           # OpenAI, Groq, Together, Ollama, etc.
-    base_url="https://api.openai.com/v1",
-    model="gpt-4o-mini",
-    robot="ur5e",
-)
-
-print(result.resolved)   # True
-print(result.attempts)   # 1 (or more, if the LLM needed correction)
-print(result.actions)    # [{"target_xyz": [...], "mass_kg": 0.3, ...}]
+result = prompt_and_resolve("pick up the mug", api_key="sk-...")
 ```
 
-### 2. Bring your own VLA/planner
-
-Wrap any action source — a VLA, a planner, a policy — in a simple callable:
+### 3. Atlas + Audit
 
 ```python
-from axiom_tfg import resolve, Constraint
+from axiom_tfg.atlas import sample_feasible_space, compute_overlap, compute_coverage
 
-def my_vla(task: str, constraints: list[Constraint]) -> list[dict]:
-    # Your model here. constraints[-1].instruction has the fix in English.
-    # constraints[-1].proposed_patch has exact coordinates.
-    return [{"target_xyz": [0.4, 0.2, 0.5], "mass_kg": 0.35, "is_splittable": False}]
-
-result = resolve(my_vla, "pick up the mug")
-if result.resolved:
-    execute(result.actions)
+atlas = sample_feasible_space("ur3e", base_xyz=[0, 0, 0.91])
+overlap = compute_overlap("ur3e", "franka", base_xyz=[0, 0, 0.91])
+coverage = compute_coverage(atlas, ee_positions)
 ```
-
-### 3. Direct validation
-
-Gate a single action without the loop:
-
-```python
-from axiom_tfg import validate_action, check_simple
-
-r = validate_action({"target_xyz": [0.4, 0.2, 0.5], "mass_kg": 0.35, "is_splittable": False})
-print(r.allowed)  # True
-
-r = check_simple(target_xyz=[5.0, 5.0, 5.0])
-print(r.verdict)              # "HARD_CANT"
-print(r.top_fix_instruction)  # "No IK solution: ... Nearest reachable: [0.26, ...]"
-```
-
-## Install
-
-```bash
-pip install -e ".[dev]"    # from source, Python 3.11+
-```
-
-## CLI
-
-```bash
-tfg demo-factory                              # CNC tending demo (see above)
-tfg demo-factory --live -m gpt-4o-mini        # same demo with a real LLM
-tfg demo --out runs/                          # gate summary table
-tfg run examples/pick_place_can.yaml          # single feasibility check
-axiom sweep task.yaml --n 50 --seed 1337      # parameter sweep
-axiom replay regressions/ --out artifacts/    # regression replay
-```
-
-All commands exit 0 on pass, 2 on fail. JUnit XML output for CI with `--junit`.
-
-## API + Web UI
-
-```bash
-uvicorn axiom_server.app:app --reload     # http://localhost:8000
-```
-
-POST to `/runs` (single check), `/sweeps` (parameter sweep), or `/ai/generate` (LLM-generated TaskSpec). See environment variables for provider config.
-
-## ROS 2
-
-Pre-flight proxy for Nav2 — intercepts `NavigateToPose` goals, validates against Axiom gates, forwards only feasible goals: `ros2 run axiom_preflight_nav2 axiom-preflight-nav2`
 
 ## Tests
 
 ```bash
-pytest -v    # 279 tests
+pytest -v    # 316 tests
 ```
 
 ## Further reading
 
-- **[THE_PROBLEM.md](THE_PROBLEM.md)** — why AI-to-robot pipelines fail, with 21 citations from the research literature
-- **[PITCH.md](PITCH.md)** — the market opportunity and what makes Axiom defensible
-- **[WHITEPAPER.md](WHITEPAPER.md)** — technical architecture of the physics grounding layer
+- **[WHITEPAPER_V3.md](WHITEPAPER_V3.md)** — technical architecture, atlas, portability results
+- **[ONE_PAGER.md](ONE_PAGER.md)** — one-page summary of what this is and why it matters
+- **[THE_PROBLEM.md](THE_PROBLEM.md)** — why AI-to-robot pipelines fail (21 citations)
 
 ## License
 

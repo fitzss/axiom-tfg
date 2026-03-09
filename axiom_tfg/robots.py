@@ -32,6 +32,14 @@ class RobotProfile:
     base_link: str
     ee_link: str
     urdf_filename: str
+    # Joint limits: (lower, upper) in radians for each joint
+    joint_position_limits: tuple[tuple[float, float], ...] | None = None
+    # Joint velocity limits in rad/s for each joint
+    joint_velocity_limits: tuple[float, ...] | None = None
+    # Max EE linear speed in m/s (from manufacturer spec)
+    max_ee_speed_m_s: float | None = None
+    # Default control frequency in Hz
+    default_hz: float = 20.0
 
     @property
     def urdf_path(self) -> str:
@@ -75,6 +83,18 @@ ROBOT_REGISTRY: dict[str, RobotProfile] = {
         base_link="panda_link0",
         ee_link="panda_link8",
         urdf_filename="franka.urdf",
+        joint_position_limits=(
+            (-2.8973, 2.8973),   # joint 1
+            (-1.7628, 1.7628),   # joint 2
+            (-2.8973, 2.8973),   # joint 3
+            (-3.0718, -0.0698),  # joint 4
+            (-2.8973, 2.8973),   # joint 5
+            (-0.0175, 3.7525),   # joint 6
+            (-2.8973, 2.8973),   # joint 7
+        ),
+        joint_velocity_limits=(2.175, 2.175, 2.175, 2.175, 2.61, 2.61, 2.61),
+        max_ee_speed_m_s=1.7,
+        default_hz=20.0,
     ),
     "kuka_iiwa14": RobotProfile(
         name="kuka_iiwa14",

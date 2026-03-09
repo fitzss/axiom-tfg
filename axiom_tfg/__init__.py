@@ -8,6 +8,9 @@ from axiom_tfg.robots import ROBOT_REGISTRY, RobotProfile, get_robot
 from axiom_tfg.sdk import Result, check, check_simple
 from axiom_tfg.vla import ActionResult, PlanResult, validate_action, validate_plan
 
+# Audit (lazy — heavy deps like datasets/pyarrow are optional)
+from axiom_tfg.audit import AuditConfig, AuditReport, audit_trajectory
+
 __all__ = [
     "check",
     "check_simple",
@@ -25,5 +28,8 @@ __all__ = [
     "RobotProfile",
     "ROBOT_REGISTRY",
     "get_robot",
+    "AuditConfig",
+    "AuditReport",
+    "audit_trajectory",
     "__version__",
 ]
